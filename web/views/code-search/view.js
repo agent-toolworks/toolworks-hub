@@ -268,16 +268,22 @@ function editorLink(abs, line) {
   return tpl.replace("{path}", encodeURI(abs)).replace("{line}", String(line));
 }
 
-function renderHits(out, results, repos, hl) {
-  // Hits arrive grouped by repo already; consecutive runs are kept in order
-  // rather than re-sorted, so the page shows what cs returned, as returned.
-  const loose = [], groups = [];
+// One block per repo, however the hits arrive: cs promises no order, and a
+// fleet-wide search returns each file's hits as it finishes, so one repo's
+// hits come interleaved with others'. Repos keep the order cs first named
+// them in, and hits keep cs's order within a repo.
+function groupHits(results) {
+  const loose = [], byRepo = new Map();
   for (const r of results) {
     if (!r.path) { loose.push(r.text); continue; }
-    let g = groups.length && groups[groups.length - 1].repo === r.repo ? groups[groups.length - 1] : null;
-    if (!g) { g = { repo: r.repo, hits: [] }; groups.push(g); }
-    g.hits.push(r);
+    if (!byRepo.has(r.repo)) byRepo.set(r.repo, { repo: r.repo, hits: [] });
+    byRepo.get(r.repo).hits.push(r);
   }
+  return { loose, groups: [...byRepo.values()] };
+}
+
+function renderHits(out, results, repos, hl) {
+  const { loose, groups } = groupHits(results);
   if (loose.length) out.append(el("pre", { class: "plain" }, loose.join("\n")));
   for (const g of groups) {
     const info = repos[g.repo] || REPOS[g.repo] || {};

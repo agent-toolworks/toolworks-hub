@@ -16,9 +16,10 @@
 #                    fake home's sessions and plugins correctly.
 #   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
 #                    hub open / stop.
-#   7. VERSIONS      the hub and its Claude source agree.
-#   8. GRAFANA       the example source, against a fake Grafana.
-#   9. DOCS          the guide's example source passes check-source as written.
+#   7. VIEWS         the code-search view groups hits by repo (needs node).
+#   8. VERSIONS      the hub and its Claude source agree.
+#   9. GRAFANA       the example source, against a fake Grafana.
+#  10. DOCS          the guide's example source passes check-source as written.
 #
 # Usage: scripts/verify
 set -uo pipefail
@@ -434,17 +435,39 @@ expect "hub stop stops it" 0 "hub: stopped"
 OUT=$(in_home bounded 30 "$HUB" stop 2>&1); RC=$?
 expect "hub stop with nothing running says so" 0 "hub: not running"
 
-head_ "7. VERSIONS"
+head_ "7. VIEWS"
+# The code-search view's grouping, run in node when it is installed: the hub
+# itself needs only python3, so without node this is a skip, never a pass.
+if command -v node >/dev/null 2>&1; then
+  node - "$ROOT/web/views/code-search/view.js" > "$TMP/node7.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const m = src.match(/^function groupHits\([\s\S]*?^}/m);
+if (!m) { console.log("bad groupHits is not in view.js"); process.exit(0); }
+const groupHits = new Function(m[0] + "\nreturn groupHits;")();
+const hit = (repo, line) => ({ repo, path: "a.py", line, text: "x" });
+const g = groupHits([hit("b", 1), hit("a", 1), hit("b", 2), hit("a", 2), hit("b", 3), { text: "loose" }]);
+const got = JSON.stringify(g.groups.map(x => [x.repo, x.hits.map(h => h.line)]));
+console.log(got === '[["b",[1,2,3]],["a",[1,2]]]'
+  ? "ok interleaved hits from two repos make two blocks, in first-seen order, hits in cs's order (#1)"
+  : "bad interleaved hits grouped as " + got);
+console.log(JSON.stringify(g.loose) === '["loose"]' ? "ok a hit with no path stays a loose line" : "bad loose: " + JSON.stringify(g.loose));
+EOF
+  tally < "$TMP/node7.out"
+else
+  printf '  SKIP  the code-search view grouping: node is not installed\n'
+fi
+
+head_ "8. VERSIONS"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
 
-head_ "8. GRAFANA EXAMPLE"
+head_ "9. GRAFANA EXAMPLE"
 # examples/grafana against a fake Grafana on 127.0.0.1: no network, no Keychain.
 python3 "$ROOT/fixtures/grafana_cases.py" "$ROOT" "$TMP" > "$TMP/py8.out" 2>&1
 tally < "$TMP/py8.out"
 
-head_ "9. DOCS"
+head_ "10. DOCS"
 # The guide's first source, copied out of docs/writing-a-source.md exactly as a
 # reader would, must pass check-source: a guide that drifts from the contract
 # teaches the wrong thing to everyone who follows it.
