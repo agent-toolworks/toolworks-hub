@@ -16,7 +16,8 @@
 #                    fake home's sessions and plugins correctly.
 #   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
 #                    hub open / stop.
-#   7. VIEWS         the code-search view groups hits by repo (needs node).
+#   7. VIEWS         the code-search view groups hits by repo, and the quota
+#                    bars count down to the reset (needs node).
 #   8. VERSIONS      the hub and its Claude source agree.
 #   9. GRAFANA       the example source, against a fake Grafana.
 #  10. DOCS          the guide's example source passes check-source as written.
@@ -466,6 +467,20 @@ console.log(got === '[["b",[1,2,3]],["a",[1,2]]]'
 console.log(JSON.stringify(g.loose) === '["loose"]' ? "ok a hit with no path stays a loose line" : "bad loose: " + JSON.stringify(g.loose));
 EOF
   tally < "$TMP/node7.out"
+  node - "$ROOT/web/app.js" > "$TMP/node7b.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const grab = name => (src.match(new RegExp("^(const " + name + " = .*|function " + name + "\\([\\s\\S]*?^})", "m")) || [""])[0];
+const f = new Function([grab("WEEKDAYS"), grab("resetsAt"), grab("timeLeft")].join("\n") + "\nreturn { resetsAt, timeLeft };")();
+const fmt = [23 * 60e3, (4 * 60 + 5) * 60e3, ((2 * 24 + 6) * 60 + 59) * 60e3 + 1].map(f.timeLeft).join(" ");
+console.log(fmt === "23m 4h5m 2d7h" ? "ok time left reads 23m, 4h5m, 2d7h" : "bad time left: " + fmt);
+const now = new Date(2026, 9, 17, 12, 0);  // a Saturday, noon
+const at = label => { const t = f.resetsAt(label, now); return t && (t - now) / 60e3; };
+const got = [at("used; resets Sat 12:40"), at("used; resets Wed 20:00"), at("used; resets Sat 11:00"), at("used")].join(",");
+console.log(got === [40, (4 * 24 + 8) * 60, 7 * 24 * 60 - 60, ""].join(",")
+  ? "ok a reset is the next such weekday and time: later today, Wednesday, or next week"
+  : "bad resets in minutes: " + got);
+EOF
+  tally < "$TMP/node7b.out"
 else
   printf '  SKIP  the code-search view grouping: node is not installed\n'
 fi

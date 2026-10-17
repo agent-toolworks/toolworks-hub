@@ -246,7 +246,35 @@ async function status(refresh) {
 // whichever tab is open; hidden when it is not installed or not working.
 
 const QUOTAS = [['five-hour', '5h'], ['seven-day', '7d']];
-let quotaTimer = null;
+let quotaTimer = null, leftTimer = null;
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// When the window resets, from token-save's label ("used; resets Sat 12:40",
+// its strftime "%a %H:%M" in local time): the next such weekday and time.
+// A stat carries no timestamp field, so the label is what there is.
+function resetsAt(label, now = new Date()) {
+  const m = /resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) (\d{1,2}):(\d{2})/.exec(label || '');
+  if (!m) return null;
+  const t = new Date(now);
+  t.setHours(Number(m[2]), Number(m[3]), 0, 0);
+  for (let i = 0; i < 8; i++, t.setDate(t.getDate() + 1)) {
+    if (WEEKDAYS[t.getDay()] === m[1] && t > now) return t;
+  }
+  return null;
+}
+
+// 23m, 4h5m, 2d6h: the two largest units, as the top bar has room for.
+function timeLeft(ms) {
+  const min = Math.max(0, Math.ceil(ms / 60000));
+  const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  return d ? `${d}d${h}h` : h ? `${h}h${m}m` : `${m}m`;
+}
+
+function tickLeft() {
+  for (const node of document.querySelectorAll('.quota-left[data-resets]')) {
+    node.textContent = timeLeft(Number(node.dataset.resets) - Date.now());
+  }
+}
 
 function renderQuota(st) {
   const box = document.getElementById('quota');
@@ -254,14 +282,16 @@ function renderQuota(st) {
   const ids = ts && (ts.state === 'working' || ts.state === 'stale')
     ? QUOTAS.filter(([id]) => ts.widgets.some(w => w.id === id)) : [];
   clearInterval(quotaTimer);
+  clearInterval(leftTimer);
   box.hidden = !ids.length;
   if (!ids.length) return;
   const load = () => Promise.all(ids.map(([id, label]) =>
     api(`/api/sources/${encodeURIComponent(ts.key)}/widgets/${id}`)
       .then(p => quotaBar(ts, label, p), err => quotaBar(ts, label, { error: { problem: err.message } }))))
-    .then(bars => box.replaceChildren(...bars));
+    .then(bars => { box.replaceChildren(...bars); tickLeft(); });
   load();
   quotaTimer = setInterval(() => { if (!document.hidden) load(); }, Math.max(10, ts.refresh_seconds) * 1000);
+  leftTimer = setInterval(tickLeft, 30000);  // the countdown moves between fetches
 }
 
 function quotaBar(ts, label, p) {
@@ -269,6 +299,7 @@ function quotaBar(ts, label, p) {
   const pct = typeof d.value === 'number' ? Math.max(0, Math.min(100, d.value)) : null;
   const level = pct == null ? 'none' : pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'good';
   const why = p.error ? `could not read: ${p.error.problem}` : d.label || '';
+  const resets = pct != null ? resetsAt(d.label) : null;
   const fill = el('span', { cls: `quota-fill quota-${level}` });
   if (pct != null) fill.style.width = `${pct}%`;
   return el('a', { cls: 'quota-item', href: sourceHref(ts.key),
@@ -276,7 +307,9 @@ function quotaBar(ts, label, p) {
     el('span', { cls: 'quota-label' }, label),
     el('span', { cls: 'quota-track', role: 'meter', 'aria-label': `${label} quota`,
       'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct }, fill),
-    el('span', { cls: 'quota-value' }, pct != null ? `${pct}%` : '—'));
+    el('span', { cls: 'quota-value' }, pct != null ? `${pct}%` : '—'),
+    resets ? el('span', { cls: 'quota-left', 'data-resets': resets.getTime(),
+      title: `resets ${resets.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` }) : null);
 }
 
 function renderProblems(problems) {

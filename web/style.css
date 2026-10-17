@@ -65,6 +65,8 @@ input {
 .quota-warn { background: var(--warn); }
 .quota-bad { background: var(--bad); }
 .quota-value { font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+.quota-left { font-variant-numeric: tabular-nums; }
+.quota-left::before { content: "· "; }
 main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
 
 .tabs {
