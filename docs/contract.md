@@ -72,6 +72,17 @@ than beside `run`, so a source shared in a git repo never holds them.
 | `run fetch <widget> [--query <text>]` | one widget's data ([`fetch.schema.json`](../contract/fetch.schema.json)); `--query` only for `search` | `timeout_seconds` |
 | `run show <entity> <id>` | this source's section of an entity page ([`show.schema.json`](../contract/show.schema.json)) | `timeout_seconds` |
 
+A source the hub ships its own page for (a *view*, below) also answers a
+fourth command, which only that page uses:
+
+| Command | Prints | Limit |
+| --- | --- | --- |
+| `run call <op> <json>` | a JSON object, in whatever shape the view reads | 600 s |
+
+`<json>` is a JSON object of at most 64 KB. The hub checks the op name, the
+arguments and that the answer is an object; the shape inside is between the
+source and its view. A source the hub has no view for is never sent `call`.
+
 Rules for every command:
 
 - **Exit 0 and print one JSON value**, UTF-8, at most 5 MB. `NaN` and
@@ -102,6 +113,16 @@ fixes it; the hub never runs it.
 There is no `not_installed`: a source that is not installed cannot run, so the
 hub works that state out itself. When the state is not `working` (or `stale`),
 the hub does not call `fetch` or `show`.
+
+## Views
+
+A view is a page the hub ships for one source, in `web/views/<source
+name>/`. When that source is working, its tab shows the view, in a frame,
+instead of its widgets, and the view asks the source questions through
+`/api/sources/<key>/call/<op>?args=<json>`, which runs `run call`. The page is
+the hub's code, so it changes with the hub; the source only answers. The
+code-search view (Search, Fleet and Questions over the fleet) is the one view
+today: it was code-search's `cs serve` page before code-search 1.30.0.
 
 ## Widget shapes
 

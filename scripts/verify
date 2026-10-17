@@ -223,7 +223,7 @@ got = {s["key"]: s for s in st["sources"]}
 want = {
     "claude": ("built-in", "working", ""),
     "token-save-fixture": ("plugin", "working", ""),
-    "code-search-fixture": ("plugin", "not_set_up", "no history database"),
+    "code-search": ("plugin", "working", ""),
     "from-future": ("user", "incompatible", "written for source contract 2"),
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
@@ -357,13 +357,38 @@ else
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/claude/widgets/sessions-today") == 200 ]] \
     && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["data"]["value"] == 1 and "fetched_at" in d' "$TMP/body" \
     && ok "a widget is fetched through the server" || bad "widget fetch" "$(head -c 400 "$TMP/body")"
-  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search-fixture/widgets/count") == 409 ]] \
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/solo/widgets/count") == 409 ]] \
     && ok "a source that is not set up is never fetched" || bad "not-set-up source was fetched"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/widgets/find?query=history") == 200 ]] \
     && grep -q '"evidence": "resolved"' "$TMP/body" && ok "a search widget runs the query" || bad "search" "$(head -c 400 "$TMP/body")"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/team-config/widgets/value") == 200 ]] \
     && python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["value"] == 7' "$TMP/body" \
     && ok "a source_dirs source reads its settings from TOOLWORKS_SOURCE_CONFIG" || bad "team-config fetch" "$(head -c 400 "$TMP/body")"
+  # The hub's page for code-search: a view, framed by the hub's page only,
+  # answered through `run call`.
+  code -H "Cookie: $JAR" "$BASE/api/status" > /dev/null
+  python3 -c 'import json,sys; v={s["key"]: s["view"] for s in json.load(open(sys.argv[1]))["sources"]}; assert v.pop("code-search") == "/views/code-search/index.html" and not any(v.values()), v' "$TMP/body" \
+    && ok "code-search has the hub's page, and no other source does" || bad "views in status" "$(head -c 400 "$TMP/body")"
+  for f in index.html view.js view.css; do
+    curl -s --noproxy '*' -D "$TMP/headers" -o "$TMP/body" -H "Cookie: $JAR" "$BASE/views/code-search/$f"
+    if grep -qi "^content-security-policy: .*frame-ancestors 'self'" "$TMP/headers" && grep -qi '^x-frame-options: SAMEORIGIN' "$TMP/headers" \
+       && head -1 "$TMP/headers" | grep -q ' 200'; then ok "view $f: served, framable by the hub's own page only"
+    else bad "view $f" "$(cat "$TMP/headers")"; fi
+  done
+  grep -qiE "(src|href)[[:space:]]*=[[:space:]]*[\"']?(https?:)?//" "$ROOT/web/views/code-search/index.html" \
+    && bad "the view loads something remote" || ok "the view loads nothing from the network"
+  [[ $(code -H "Cookie: $JAR" "$BASE/views/code-search/..%2Fapp.js") == 404 ]] && ok "a view path cannot climb out of its folder" || bad "view path escape"
+  curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null -H "Cookie: $JAR" "$BASE/"
+  grep -qi '^x-frame-options: DENY' "$TMP/headers" && ok "the hub's own page still cannot be framed" || bad "hub page framing"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/echo?args=%7B%22q%22%3A%22a%20b%22%7D") == 200 ]] \
+    && python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == {"op": "echo", "args": {"q": "a b"}}' "$TMP/body" \
+    && ok "a call reaches run call with its JSON arguments" || bad "call echo" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/fail") == 502 ]] && grep -q "the service is down" "$TMP/body" \
+    && ok "a call that fails is a 502 with its stderr" || bad "call fail" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/echo?args=%5B1%5D") == 400 ]] && ok "call arguments must be a JSON object" || bad "call array args"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/Bad%20Op") == 400 ]] && ok "a call name is checked before run is called" || bad "call bad op"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/call/echo") == 404 ]] && ok "a source the hub has no page for is never called" || bad "call without a view"
+  [[ $(code "$BASE/api/sources/code-search/call/echo") == 403 ]] && ok "a call needs the token" || bad "call without token"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
   [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"
 

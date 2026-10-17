@@ -23,6 +23,8 @@ CONTRACT_DIR = os.path.join(ROOT, "contract")
 CONTRACT_VERSION = 1           # the version of contract/ this hub implements
 DETECT_TIMEOUT = 5             # seconds; detect runs on every hub start
 DEFAULT_TIMEOUT = 10           # seconds, for fetch and show; see manifest timeout_seconds
+CALL_TIMEOUT = 600             # seconds, for call: a language server's first run can take minutes
+MAX_CALL_ARGS = 64 * 1024      # bytes of JSON arguments the hub passes to one call
 MAX_OUTPUT = 5 * 1024 * 1024   # bytes of stdout the hub will read from one command
 
 SCHEMAS = ("widgets.schema.json", "manifest.schema.json", "detect.schema.json",

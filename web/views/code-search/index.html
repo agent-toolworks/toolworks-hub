@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>code-search</title>
+<!-- The hub's page for code-search: Search, Fleet and Questions over the
+     fleet. It runs code-search's hub-source through the hub
+     (/api/sources/<source>/call/<op>); code-search ships no page itself. -->
+<link rel="stylesheet" href="view.css">
+<script src="view.js" defer></script>
+</head>
+<body>
+<header>
+  <h1>code-search</h1><span class="version" id="version"></span>
+  <div class="tabs" role="tablist">
+    <button role="tab" data-tab="search" aria-selected="true">Search</button>
+    <button role="tab" data-tab="fleet" aria-selected="false">Fleet</button>
+    <button role="tab" data-tab="questions" aria-selected="false">Questions</button>
+  </div>
+  <span class="spacer"></span>
+  <label>scope <select id="scope" aria-label="Scope"></select></label>
+  <label>open in
+    <select id="editor" aria-label="Editor">
+      <option value="vscode://file/{path}:{line}">VS Code</option>
+      <option value="cursor://file/{path}:{line}">Cursor</option>
+      <option value="idea://open?file={path}&line={line}">JetBrains</option>
+      <option value="">nothing (copy only)</option>
+    </select>
+  </label>
+</header>
+
+<section id="tab-search" class="page" role="tabpanel">
+  <form id="sform" class="searchbar" autocomplete="off">
+    <input type="search" id="q" placeholder="Search the code: a name, a string, a route, a config key…" aria-label="Search">
+    <select id="srepo" aria-label="Repository"><option value="">All repos</option></select>
+    <button class="primary" type="submit">Search</button>
+  </form>
+  <div class="options">
+    <label><input type="checkbox" id="o-regex"> regex</label>
+    <label title="match whole identifiers only, not substrings of longer ones"><input type="checkbox" id="o-word"> whole word</label>
+    <label title="skip data, doc and generated files (.json .csv .md .lock …)"><input type="checkbox" id="o-src"> skip data &amp; docs</label>
+  </div>
+  <div class="status" id="sstatus" role="status"></div>
+  <div id="sout"></div>
+</section>
+
+<section id="tab-fleet" class="page" role="tabpanel" hidden>
+  <div class="fleetbar">
+    <input type="search" id="ffilter" placeholder="Filter repos…" aria-label="Filter repos">
+    <span class="muted" id="fcount"></span>
+    <span class="spacer-grow"></span>
+    <button type="button" id="frefresh">Refresh</button>
+  </div>
+  <div class="status" id="fstatus" role="status"></div>
+  <div class="tablewrap"><table id="ftable"></table></div>
+</section>
+
+<div id="tab-questions" class="questions" role="tabpanel" hidden>
+  <nav id="nav" aria-label="Questions"></nav>
+  <section id="work">
+    <h2 id="title"></h2>
+    <p class="desc" id="desc"></p>
+    <form id="qform" class="q" autocomplete="off"></form>
+    <div class="status" id="qstatus" role="status"></div>
+    <div id="qout"></div>
+  </section>
+</div>
+<datalist id="repo-names"></datalist>
+</body>
+</html>

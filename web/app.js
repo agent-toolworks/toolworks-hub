@@ -215,7 +215,11 @@ function sourceCard(s) {
     if (s.details && s.details.length) note.append(el('pre', {}, s.details.join('\n')));
     card.append(note);
   }
-  if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
+  if ((s.state === 'working' || s.state === 'stale') && s.view) {
+    // The hub's own page for this source, in place of its widgets.
+    card.append(el('iframe', { cls: 'view', title: s.title,
+      src: `${s.view}?source=${encodeURIComponent(s.key)}` }));
+  } else if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
     card.append(el('div', { cls: 'widgets' }, s.widgets.map(w => widgetCard(s, w))));
   }
   return card;

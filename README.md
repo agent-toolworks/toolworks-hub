@@ -47,6 +47,12 @@ Each source gets a tab, with a dot for its state (the states are in
 last tab lists the agent-toolworks plugins you have not installed, with their
 install commands.
 
+code-search's tab is a full page of its own: Search, Fleet and Questions over
+the fleet or any ticket workspace, with hits that open in your editor. It
+lives here, in [`web/views/code-search`](web/views/code-search), and asks
+code-search's `hub-source/` for every answer (see
+[Views](docs/contract.md#views)).
+
 A session in any table links to that session's page, which gathers a section
 from every source that knows about it: the Claude Code source's transcript
 facts, token-save's cost over the session, and so on.

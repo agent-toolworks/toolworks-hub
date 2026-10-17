@@ -12,7 +12,7 @@ What it holds, and what the hub must make of it:
 
   plugins     token-save 0.6.0, with 0.25.0 also in the cache    stale in the plugins table
               ... its hub-source: the passes fixture            working
-              code-search, its hub-source not set up            not_set_up
+              code-search, its hub-source answering `run call`  working, with the hub's page
               agent-teller, with a hub-source that would pass   never listed
               swift-lsp, no hub-source                          no source
   catalogue   fleet-workspace, code-search, token-save,
@@ -85,7 +85,7 @@ def main(root):
 
     records = dict([
         install("token-save@agent-toolworks", "0.6.0", ("passes", "token-save-fixture"), also_cached=("0.25.0",)),
-        install("code-search@agent-toolworks", "1.23.0", ("not-set-up", "code-search-fixture")),
+        install("code-search@agent-toolworks", "1.23.0", ("calls", "code-search")),
         install("agent-teller@agent-teller", "0.25.0", ("passes", "teller-fixture")),
         install("swift-lsp@claude-plugins-official", "1.0.0"),
     ])

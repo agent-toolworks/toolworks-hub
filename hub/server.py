@@ -50,7 +50,11 @@ STATIC = {
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/static/style.css": ("style.css", "text/css; charset=utf-8"),
 }
+VIEW_FILE = re.compile(r"^/views/([a-z0-9-]+)/([a-z0-9-]+\.(html|js|css))$")
+VIEW_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
+              "css": "text/css; charset=utf-8"}
 WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
+CALL = re.compile(r"^/api/sources/([^/]+)/call/([^/]+)$")
 ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
 HEADERS = {
     "Cache-Control": "no-store",
@@ -58,6 +62,13 @@ HEADERS = {
     "Referrer-Policy": "no-referrer",
     "X-Frame-Options": "DENY",
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
+                               "base-uri 'none'; form-action 'self'",
+}
+# A view is the hub's own page for one source, shown in a frame on the hub's
+# page, and nowhere else.
+VIEW_HEADERS = {
+    "X-Frame-Options": "SAMEORIGIN",
+    "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'self'; "
                                "base-uri 'none'; form-action 'self'",
 }
 
@@ -109,6 +120,13 @@ class Handler(BaseHTTPRequestHandler):
             name, ctype = STATIC[url.path]
             with open(os.path.join(WEB, name), "rb") as f:
                 return self._send(200, ctype, f.read())
+        m = VIEW_FILE.match(url.path)
+        if m:
+            path = os.path.join(WEB, "views", m.group(1), m.group(2))
+            if not os.path.isfile(path):
+                return self._json(404, {"error": "not found"})
+            with open(path, "rb") as f:
+                return self._send(200, VIEW_TYPES[m.group(3)], f.read(), VIEW_HEADERS)
         if url.path == "/api/ping":
             return self._json(200, {"ok": True})
         if url.path == "/api/status":
@@ -119,6 +137,10 @@ class Handler(BaseHTTPRequestHandler):
             key, widget_id = (urllib.parse.unquote(g) for g in m.groups())
             code, payload = hub.registry.widget(key, widget_id, (query.get("query") or [None])[0])
             return self._json(code, payload)
+        m = CALL.match(url.path)
+        if m:
+            key, op = (urllib.parse.unquote(g) for g in m.groups())
+            return self._json(*hub.registry.call(key, op, (query.get("args") or ["{}"])[0]))
         m = ENTITY.match(url.path)
         if m:
             etype, eid = (urllib.parse.unquote(g) for g in m.groups())

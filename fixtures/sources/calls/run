@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Answers `run call`, the command only a view (a page the hub ships for one
+# source) uses: echo gives its arguments back, fail fails.
+set -euo pipefail
+case "${1:-}" in
+  detect) echo '{"state": "working"}' ;;
+  call)
+    case "${2:-}" in
+      echo) printf '{"op": "echo", "args": %s}\n' "$3" ;;
+      fail) echo "the service is down" >&2; exit 1 ;;
+      *) echo "unknown call: $2" >&2; exit 2 ;;
+    esac ;;
+  *) echo "unknown command: $*" >&2; exit 2 ;;
+esac

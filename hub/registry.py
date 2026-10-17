@@ -7,10 +7,12 @@ refresh_seconds have passed. When a fetch fails, the last good result is kept
 and served with the failure beside it, so a source that breaks for a minute
 shows old data with a warning rather than an empty panel.
 
-Search widgets are fetched on every query and never cached.
+Search widgets are fetched on every query and never cached, and so are calls
+from a view (a page the hub ships for one source, under web/views/<name>/).
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -28,6 +30,13 @@ import sources  # noqa: E402
 from version import VERSION  # noqa: E402
 
 DETECT_EVERY = 30  # seconds
+VIEWS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "views")
+OP = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+def view_for(name: str):
+    """The URL of the page the hub ships for this source, if it has one."""
+    return f"/views/{name}/index.html" if os.path.isfile(os.path.join(VIEWS, name, "index.html")) else None
 
 
 def _now_iso() -> str:
@@ -63,7 +72,7 @@ class Registry:
             loaded = [self._sources[k] for k in self._order]
             return {
                 "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION},
-                "sources": [s.public() for s in loaded],
+                "sources": [{**s.public(), "view": view_for(s.name)} for s in loaded],
                 "available": list(self._available),
                 "problems": list(self._problems),
                 # A reference is drawn as a link only when something can show it.
@@ -143,6 +152,35 @@ class Registry:
                 entry = {"good": result, "good_at": time.monotonic()}
             self._cache[(key, widget_id)] = entry
             return 200, self._payload(entry)
+
+    def call(self, key: str, op: str, args: str):
+        """(HTTP status, payload) for `run call <op> <args>`, which only a view
+        uses. The answer is the view's to read, so the hub checks only that it
+        is a JSON object."""
+        with self._lock:
+            s = self._sources.get(key)
+        if s is None:
+            return 404, {"error": f"there is no source '{key}'"}
+        if view_for(s.name) is None:
+            return 404, {"error": f"the hub has no page for {s.title}, so nothing calls it"}
+        if s.state not in sources.FETCHABLE:
+            return 409, {"error": f"{s.title} is {s.state.replace('_', ' ')}: {s.reason}"}
+        if not OP.match(op):
+            return 400, {"error": f"{op!r} is not a call name"}
+        if len(args.encode()) > contract.MAX_CALL_ARGS:
+            return 400, {"error": "the arguments are too long"}
+        try:
+            parsed = json.loads(args)
+        except ValueError:
+            parsed = None
+        if not isinstance(parsed, dict):
+            return 400, {"error": "the arguments must be a JSON object"}
+        value, problem, stderr = runner.call(s.dir, ["call", op, args], contract.CALL_TIMEOUT, s.name)
+        if problem:
+            return 502, {"error": f"{s.title}: call {op} {problem}", "details": sources.stderr_lines(stderr)}
+        if not isinstance(value, dict):
+            return 502, {"error": f"{s.title}: call {op} printed JSON that is not an object"}
+        return 200, value
 
     @staticmethod
     def _payload(entry: dict) -> dict:

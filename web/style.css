@@ -126,6 +126,10 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .results p, .available p { margin: 4px 0; }
 .search { display: flex; gap: 8px; margin-bottom: 8px; }
 
+iframe.view {
+  display: block; width: 100%; height: calc(100vh - 210px); min-height: 480px; margin-top: 16px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+}
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--line); }
 .chart .tick { fill: var(--muted); font-size: 11px; }
