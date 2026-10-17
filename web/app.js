@@ -227,6 +227,7 @@ async function status(refresh) {
     linkable = new Set(st.linkable || []);
     document.getElementById('updated').textContent =
       `hub ${st.hub.version} · checked ${new Date().toLocaleTimeString()}`;
+    renderProblems(st.problems || []);
     return st;
   } catch (err) {
     showBanner(`Could not reach the hub: ${err.message}`);
@@ -234,28 +235,69 @@ async function status(refresh) {
   }
 }
 
+function renderProblems(problems) {
+  const box = document.getElementById('problems');
+  box.replaceChildren(...problems.map(p => el('div', { cls: 'note note-broken' }, el('p', {}, p))));
+  box.hidden = !problems.length;
+}
+
+// --- tabs: one per source, then what is not installed ------------------------
+
+const NOT_INSTALLED = '#/not-installed';
+const sourceHref = key => `#/source/${encodeURIComponent(key)}`;
+
+function remember(hash) {
+  try { localStorage.setItem('hub.tab', hash); } catch { /* no storage: start at the first tab */ }
+}
+
+function remembered() {
+  try { return localStorage.getItem('hub.tab'); } catch { return null; }
+}
+
+function orderedSources(st) {
+  // Working sources first, so the first tab has something to show.
+  const order = s => (s.state === 'working' || s.state === 'stale' ? 0 : 1);
+  return [...st.sources].sort((a, b) => order(a) - order(b));
+}
+
+function renderTabs(st, current) {
+  const tab = (href, label, state) => el('a', {
+    cls: 'tab', href, 'aria-current': href === current ? 'page' : null,
+    title: state ? STATE_LABEL[state] || state : null,
+  }, state ? el('span', { cls: `dot state-${state}`, 'aria-hidden': 'true' }) : null, label);
+  const tabs = orderedSources(st).map(s => tab(sourceHref(s.key), s.title, s.state));
+  if (st.available.length) tabs.push(tab(NOT_INSTALLED, `Not installed (${st.available.length})`));
+  document.getElementById('tabs').replaceChildren(...tabs);
+  const active = document.querySelector('.tab[aria-current]');
+  if (active) active.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+}
+
 function showView(name) {
   document.getElementById('entity').hidden = name !== 'entity';
-  document.getElementById('sources').hidden = name !== 'home';
-  if (name !== 'home') document.getElementById('available').hidden = true;
+  document.getElementById('panel').hidden = name !== 'panel';
+}
+
+function stopTimers() {
+  timers.forEach(clearInterval);
+  timers = [];
 }
 
 async function loadEntity(type, id, refresh) {
-  timers.forEach(clearInterval);
-  timers = [];
+  stopTimers();
   showView('entity');
   const view = document.getElementById('entity');
-  view.replaceChildren(el('p', {}, el('a', { href: '#/' }, '← All sources')), el('p', { cls: 'muted' }, 'Loading…'));
-  await status(refresh);
+  const back = () => el('p', {}, el('a', { href: remembered() || '#/' }, '← Back'));
+  view.replaceChildren(back(), el('p', { cls: 'muted' }, 'Loading…'));
+  const st = await status(refresh);
+  if (st) renderTabs(st, null);
   let page;
   try {
     page = await api(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
   } catch (err) {
-    view.replaceChildren(el('p', {}, el('a', { href: '#/' }, '← All sources')), el('p', { cls: 'error' }, err.message));
+    view.replaceChildren(back(), el('p', { cls: 'error' }, err.message));
     return;
   }
-  const head = el('header', { cls: 'entity-head' },
-    el('p', {}, el('a', { href: '#/' }, '← All sources')),
+  const head = el('header', { cls: 'entity-head' }, back(),
     el('h2', {}, page.title, ' ', el('code', {}, page.id)));
   const sections = page.sections.map(sec => {
     const card = el('section', { cls: 'source' }, el('header', { cls: 'source-head' }, el('h2', {}, sec.title)));
@@ -276,28 +318,38 @@ async function loadEntity(type, id, refresh) {
     : [el('p', { cls: 'muted' }, `No installed source has anything to show for this ${page.type}.`)]));
 }
 
-async function load(refresh) {
-  timers.forEach(clearInterval);
-  timers = [];
-  showView('home');
+async function loadTab(wanted, refresh) {
+  stopTimers();
+  showView('panel');
   const st = await status(refresh);
   if (!st) return;
-  // Working sources first, so the page leads with what has something to show.
-  const order = s => (s.state === 'working' || s.state === 'stale' ? 0 : 1);
-  const sources = [...st.sources].sort((a, b) => order(a) - order(b));
-  document.getElementById('sources').replaceChildren(...sources.map(sourceCard));
+  const sources = orderedSources(st);
+  const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0
+    : sources.some(s => sourceHref(s.key) === h));
+  // An unknown or stale tab (a source that went away) falls back to the first.
+  const hash = [wanted, remembered()].find(valid)
+    || (sources.length ? sourceHref(sources[0].key) : NOT_INSTALLED);
+  if (hash !== location.hash) history.replaceState(null, '', hash);
+  remember(hash);
+  renderTabs(st, hash);
 
-  const avail = document.getElementById('available');
-  document.getElementById('available-list').replaceChildren(...st.available.map(a =>
-    el('li', {}, el('strong', {}, a.name), a.description ? el('p', { cls: 'muted' }, a.description) : null,
-      el('code', {}, a.install))));
-  avail.hidden = !st.available.length;
+  const panel = document.getElementById('panel');
+  if (hash === NOT_INSTALLED) {
+    panel.replaceChildren(el('section', { cls: 'source' },
+      el('header', { cls: 'source-head' }, el('h2', {}, 'Not installed')),
+      el('ul', { cls: 'available' }, st.available.map(a =>
+        el('li', {}, el('strong', {}, a.name), a.description ? el('p', { cls: 'muted' }, a.description) : null,
+          el('code', {}, a.install))))));
+    return;
+  }
+  const s = sources.find(x => sourceHref(x.key) === hash);
+  panel.replaceChildren(s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.'));
 }
 
 function route(refresh) {
   const m = location.hash.match(/^#\/entity\/([^/]+)\/([^/]+)$/);
   if (m) return loadEntity(decodeURIComponent(m[1]), decodeURIComponent(m[2]), refresh);
-  return load(refresh);
+  return loadTab(location.hash, refresh);
 }
 
 function showBanner(text) {
