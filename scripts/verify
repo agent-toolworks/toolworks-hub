@@ -10,7 +10,8 @@
 #                    reason it was built with, and a hung source is stopped
 #                    along with what it started.
 #   4. DISCOVERY     against a fake home (fixtures/build-home): every state,
-#                    name collisions, agent-teller never loaded or listed.
+#                    name collisions, hub.json source_dirs, agent-teller
+#                    never loaded or listed.
 #   5. CLAUDE SOURCE the built-in source meets the contract and reads the
 #                    fake home's sessions and plugins correctly.
 #   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
@@ -227,6 +228,8 @@ want = {
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
     "bad-show": ("user", "working", ""),
+    "team-config": ("folder", "working", ""),
+    "solo": ("folder", "not_set_up", "no history database"),
 }
 for key, (origin, state, reason) in want.items():
     s = got.get(key)
@@ -238,6 +241,11 @@ extra = set(got) - set(want)
 print(f"bad unexpected sources: {sorted(extra)}" if extra else "ok no other sources, so agent-teller's hub-source was never loaded")
 print("ok claude is found first, so it keeps its name" if st["sources"][0]["key"] == "claude"
       else f"bad first source is {st['sources'][0]['key']}")
+print("ok source_dirs are read in order, after the user's folder" if [s["key"] for s in st["sources"]][-2:] == ["team-config", "solo"]
+      else f"bad order: {[s['key'] for s in st['sources']]}")
+probs = st["problems"]
+print("ok a source_dirs folder that does not exist is a problem, not a failure"
+      if len(probs) == 1 and "source_dirs names ~/missing, which is not a folder" in probs[0] else f"bad problems: {probs}")
 names = [a["name"] for a in st["available"]]
 print("ok only fleet-workspace is listed as not installed" if names == ["fleet-workspace"]
       else f"bad not installed: {names}")
@@ -263,6 +271,28 @@ print("ok and nothing listed as not installed, with no catalogue on disk" if st[
       else f"bad available: {st['available']}")
 EOF
 tally < "$TMP/py4b.out"
+
+# hub.json that is wrong is a problem the page shows, and never stops the hub.
+python3 - "$ROOT/hub" "$TMP/hubjson" > "$TMP/py4c.out" 2>&1 <<'EOF'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+os.environ["XDG_CONFIG_HOME"] = sys.argv[2]
+import discovery, paths
+os.makedirs(os.path.dirname(paths.hub_config_path()), exist_ok=True)
+for text, want, label in [
+    ('[1]', "is not a JSON object", "not an object"),
+    ('{"source_dirs": "x"}', "must be a list of folder paths", "source_dirs not a list"),
+    ('{"source_dir": []}', "unknown setting 'source_dir'", "a misspelt setting"),
+    ('{', "could not read", "not JSON"),
+]:
+    open(paths.hub_config_path(), "w").write(text)
+    dirs, problems = discovery.source_dirs()
+    print(f"ok hub.json {label}: a problem" if dirs == [] and any(want in p for p in problems)
+          else f"bad hub.json {label}: {dirs} {problems}")
+os.remove(paths.hub_config_path())
+print("ok no hub.json: no folders, no problem" if discovery.source_dirs() == ([], []) else f"bad no hub.json: {discovery.source_dirs()}")
+EOF
+tally < "$TMP/py4c.out"
 
 head_ "5. CLAUDE SOURCE"
 OUT=$(in_home bounded 30 "$HUB" check-source "$ROOT/sources/claude" --entity session=$RECENT 2>&1); RC=$?
@@ -331,6 +361,9 @@ else
     && ok "a source that is not set up is never fetched" || bad "not-set-up source was fetched"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/widgets/find?query=history") == 200 ]] \
     && grep -q '"evidence": "resolved"' "$TMP/body" && ok "a search widget runs the query" || bad "search" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/team-config/widgets/value") == 200 ]] \
+    && python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["data"]["value"] == 7' "$TMP/body" \
+    && ok "a source_dirs source reads its settings from TOOLWORKS_SOURCE_CONFIG" || bad "team-config fetch" "$(head -c 400 "$TMP/body")"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
   [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"
 

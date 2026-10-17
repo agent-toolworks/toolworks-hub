@@ -98,6 +98,27 @@ it: it runs your program, and your program talks to the service. Set
 `"network": true` if you make network calls; the hub shows it beside the
 source's name.
 
+## Sharing sources in a git repo
+
+A team can keep its sources in one repo, a subfolder per source, and each
+person points the hub at their checkout in `~/.config/agent-toolworks/hub.json`:
+
+```json
+{"source_dirs": ["~/git/team-sources"]}
+```
+
+The hub reads them in place, so a `git pull` is the update; nothing is copied
+and the hub's own code is never touched. A folder in `source_dirs` that is
+itself a source (it has a `source.json`) works too.
+
+What differs from person to person stays out of the repo:
+
+- **Settings** (a URL, a dashboard ID) go in the folder the hub names in
+  `TOOLWORKS_SOURCE_CONFIG`, `~/.config/agent-toolworks/source-config/<name>/`.
+  Ship a `config.example.json` in the repo and have `detect` say where to copy
+  it, as [`examples/grafana`](../examples/grafana) does.
+- **Secrets** go in the Keychain or an environment variable, as above.
+
 ## Linking to other pages
 
 To make a value link to an entity's page, print a reference instead of plain

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Where the hub finds sources, and which components are not installed.
 
-Sources come from three places and nowhere else; the hub never downloads one:
+Sources come from these places and nowhere else; the hub never downloads one:
 
 1. inside the hub, under sources/ (the Claude data source);
 2. a hub-source/ folder inside each installed Claude Code plugin, found by the
    plugin's installPath in installed_plugins.json -- never by searching the
    PATH, because plugins run from Claude Code's cache;
-3. the user's folder, ~/.config/agent-toolworks/sources/*/.
+3. the user's folder, ~/.config/agent-toolworks/sources/*/;
+4. the folders named in ~/.config/agent-toolworks/hub.json's source_dirs, in
+   the order listed -- a git checkout of a team's sources, say. A folder with
+   a source.json is one source; any other folder holds one per subfolder.
 
 A plugin that is not installed has no folder, so it has no source, and nothing
 else needs to know it is absent. To say what is missing, the hub reads the
@@ -35,7 +38,7 @@ EXCLUDED = frozenset({"agent-teller", "toolworks-hub"})
 @dataclass
 class Found:
     dir: str
-    origin: str                   # "built-in", "plugin" or "user"
+    origin: str                   # "built-in", "plugin", "user" or "folder"
     plugin: Optional[str] = None  # "token-save@agent-toolworks"
 
 
@@ -74,10 +77,36 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
+def source_dirs():
+    """(the folders hub.json's source_dirs names, problems). `~` is expanded,
+    and a relative path is taken from the folder hub.json is in."""
+    full_path = paths.hub_config_path()
+    doc, problem = _read_json(full_path)
+    if doc is None:
+        return [], [problem] if problem else []
+    home = os.path.expanduser("~")
+    path = "~" + full_path[len(home):] if full_path.startswith(home + os.sep) else full_path
+    if not isinstance(doc, dict):
+        return [], [f"{path} is not a JSON object"]
+    problems = [f"{path}: unknown setting '{k}'" for k in sorted(doc) if k != "source_dirs"]
+    dirs = doc.get("source_dirs", [])
+    if not isinstance(dirs, list) or not all(isinstance(d, str) and d for d in dirs):
+        return [], problems + [f"{path}: source_dirs must be a list of folder paths"]
+    out = []
+    for d in dirs:
+        full = os.path.join(os.path.dirname(full_path), os.path.expanduser(d))
+        if os.path.isdir(full):
+            out.append(os.path.normpath(full))
+        else:
+            problems.append(f"{path}: source_dirs names {d}, which is not a folder")
+    return out, problems
+
+
 def find():
     """(every source folder, in the order names are claimed, problems)."""
     found = [Found(d, "built-in") for d in _subdirs(paths.builtin_sources_dir())]
     records, problem = plugin_records()
+    problems = [problem] if problem else []
     for key in sorted(records):
         if key.partition("@")[0] in EXCLUDED:
             continue
@@ -85,7 +114,12 @@ def find():
         if isinstance(install, str) and os.path.isdir(os.path.join(install, "hub-source")):
             found.append(Found(os.path.join(install, "hub-source"), "plugin", key))
     found += [Found(d, "user") for d in _subdirs(paths.user_sources_dir())]
-    return found, [problem] if problem else []
+    dirs, more = source_dirs()
+    problems += more
+    for root in dirs:
+        one = os.path.isfile(os.path.join(root, "source.json"))
+        found += [Found(d, "folder") for d in ([root] if one else _subdirs(root))]
+    return found, problems
 
 
 def catalogue() -> list:

@@ -139,7 +139,7 @@ def _load(found) -> Source:
 
 
 def detect(s: Source) -> None:
-    value, problem, stderr = runner.call(s.dir, ["detect"], contract.DETECT_TIMEOUT)
+    value, problem, stderr = runner.call(s.dir, ["detect"], contract.DETECT_TIMEOUT, s.name)
     if problem:
         s.state, s.reason, s.details = "broken", f"detect {problem}", stderr_lines(stderr)
         s.fix = f"hub check-source {s.dir}"
@@ -157,7 +157,7 @@ def detect(s: Source) -> None:
 
 def resolve(found: list) -> list:
     """Every found folder as a Source with its state. Names are claimed in
-    discovery order (built-in, then plugins, then the user's), and a later
+    discovery order (built-in, plugins, the user's folder, source_dirs), and a later
     source with a claimed name is broken: two sources answering to one name
     would make every link to it ambiguous."""
     out, claimed = [], {}

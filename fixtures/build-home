@@ -21,6 +21,10 @@ What it holds, and what the hub must make of it:
               a source written for contract 2                   incompatible
               a source calling itself "claude"                  broken: name taken
               a source whose show breaks the contract           working; its session section is an error
+  hub.json    source_dirs: team/ (one source per subfolder, a
+              .git and a file beside them), solo/ (itself a
+              source), and a folder that does not exist        2 folder sources, 1 problem
+              team-config's settings in source-config/          working, read from there
   sessions    one active now, one three days ago, a file that
               is not a transcript, a folder named like one      2 sessions, 1 active today
 """
@@ -110,6 +114,18 @@ def main(root):
     source("newer-contract", os.path.join(user, "from-future"), "from-future")
     source("passes", os.path.join(user, "imposter"), "claude")
     source("wrong-shape", os.path.join(user, "bad-show"), "bad-show")
+
+    # source_dirs: relative to hub.json's folder, absolute, and ~ (HOME is root/home).
+    team = os.path.join(root, "team")
+    source("reads-config", os.path.join(team, "team-config"), "team-config")
+    os.makedirs(os.path.join(team, ".git"))
+    with open(os.path.join(team, "README.md"), "w") as f:
+        f.write("Team sources.\n")
+    source("not-set-up", os.path.join(root, "solo"), "solo")
+    write_json(os.path.join(root, "config", "agent-toolworks", "hub.json"),
+               {"source_dirs": ["../../team", os.path.join(root, "solo"), "~/missing"]})
+    write_json(os.path.join(root, "config", "agent-toolworks", "source-config", "team-config", "config.json"),
+               {"value": 7})
 
     os.makedirs(os.path.join(root, "home"))
     os.makedirs(os.path.join(root, "cache"))

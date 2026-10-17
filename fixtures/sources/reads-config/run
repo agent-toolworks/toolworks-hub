@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Keeps its settings where a source shared in git should: in the folder the
+# hub names in TOOLWORKS_SOURCE_CONFIG, never beside this file.
+set -euo pipefail
+conf="${TOOLWORKS_SOURCE_CONFIG:?the hub did not set TOOLWORKS_SOURCE_CONFIG}/config.json"
+case "${1:-}" in
+  detect)
+    if [[ -f $conf ]]; then echo '{"state": "working"}'
+    else printf '{"state": "not_set_up", "reason": "no config at %s"}\n' "$conf"; fi ;;
+  fetch) printf '{"kind": "stat", "data": {"value": %s}}\n' "$(cat "$conf" | python3 -c 'import json,sys; print(json.load(sys.stdin)["value"])')" ;;
+  *) echo "unknown command: $*" >&2; exit 2 ;;
+esac

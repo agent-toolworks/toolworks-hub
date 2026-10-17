@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """An example toolworks-hub source: one query against a Grafana data source.
 
-Copy this folder to ~/.config/agent-toolworks/sources/grafana/, copy
-config.example.json to config.json beside it and fill it in, and store an API
-token (a Grafana service account token with the Viewer role is enough):
+Copy this folder to ~/.config/agent-toolworks/sources/grafana/ (or keep it in
+a git repo named in hub.json's source_dirs), copy config.example.json to
+~/.config/agent-toolworks/source-config/grafana/config.json and fill it in,
+and store an API token (a Grafana service account token with the Viewer role
+is enough):
 
   security add-generic-password -s toolworks-hub-grafana -a grafana -w
 
@@ -19,7 +21,10 @@ What it shows how to do:
 - turn an upstream failure into an error the hub shows (a non-zero exit with
   the reason on stderr), never into an empty chart that looks like no data.
 
-GRAFANA_SOURCE_CONFIG names another config file (scripts/verify uses it).
+The config is read from the folder the hub names in TOOLWORKS_SOURCE_CONFIG,
+so it never sits in a repo the source is shared from; a config.json beside
+this file is read when that has none. GRAFANA_SOURCE_CONFIG names another
+config file (scripts/verify uses it).
 """
 import json
 import os
@@ -45,7 +50,11 @@ def fail(message):
 
 def config():
     """(config, problem)."""
-    path = os.environ.get("GRAFANA_SOURCE_CONFIG") or os.path.join(HERE, "config.json")
+    path = os.environ.get("GRAFANA_SOURCE_CONFIG")
+    if not path:
+        private = os.path.join(os.environ.get("TOOLWORKS_SOURCE_CONFIG", ""), "config.json")
+        path = private if os.environ.get("TOOLWORKS_SOURCE_CONFIG") and os.path.isfile(private) \
+            else os.path.join(HERE, "config.json")
     try:
         with open(path, encoding="utf-8") as f:
             cfg = json.load(f)
@@ -75,7 +84,9 @@ def detect():
     cfg, problem = config()
     if problem:
         return out({"state": "not_set_up", "reason": problem,
-                    "fix": "copy config.example.json to config.json in %s and fill it in" % HERE})
+                    "fix": "copy %s to %s and fill it in" % (
+                        os.path.join(HERE, "config.example.json"),
+                        os.path.join(os.environ.get("TOOLWORKS_SOURCE_CONFIG") or HERE, "config.json"))})
     if not token(cfg):
         service = cfg.get("keychain_service") or "toolworks-hub-grafana"
         return out({"state": "not_set_up", "reason": "no Grafana API token in the Keychain or GRAFANA_TOKEN",

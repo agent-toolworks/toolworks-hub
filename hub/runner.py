@@ -12,6 +12,8 @@ hub. Each command gets:
   the child, and reading one without a limit lets a runaway source fill
   memory. The file's size is checked before a byte of it is read.
 - no stdin, and the source folder as its working directory.
+- the hub's environment plus TOOLWORKS_SOURCE_CONFIG, the folder for this
+  source's own settings (paths.source_config_dir). It may not exist yet.
 
 The hub's state for a source that fails here is `broken`, shown with the
 problem and the end of stderr.
@@ -31,6 +33,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import contract  # noqa: E402
+import paths  # noqa: E402
 
 STDERR_TAIL = 4000  # bytes of stderr kept for display
 
@@ -46,12 +49,12 @@ class Result:
     error: Optional[str] = None    # it never started
 
 
-def run(executable: str, args: list, cwd: str, timeout: float) -> Result:
+def run(executable: str, args: list, cwd: str, timeout: float, env=None) -> Result:
     started = time.monotonic()
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
         try:
             proc = subprocess.Popen([executable, *args], cwd=cwd, stdin=subprocess.DEVNULL,
-                                    stdout=out, stderr=err, start_new_session=True)
+                                    stdout=out, stderr=err, start_new_session=True, env=env)
         except OSError as e:
             return Result(error=e.strerror or str(e))
         result = Result()
@@ -78,10 +81,12 @@ def run(executable: str, args: list, cwd: str, timeout: float) -> Result:
     return result
 
 
-def call(source_dir: str, args: list, timeout: float):
-    """Run `<source_dir>/run args...`. Returns (value, None, stderr) when it
-    printed valid JSON and exited 0, else (None, problem, stderr)."""
-    r = run(os.path.join(source_dir, "run"), args, source_dir, timeout)
+def call(source_dir: str, args: list, timeout: float, name: str):
+    """Run `<source_dir>/run args...` as the source called `name`. Returns
+    (value, None, stderr) when it printed valid JSON and exited 0, else
+    (None, problem, stderr)."""
+    env = dict(os.environ, TOOLWORKS_SOURCE_CONFIG=paths.source_config_dir(name))
+    r = run(os.path.join(source_dir, "run"), args, source_dir, timeout, env)
     if r.error is not None:
         return None, f"did not start ({r.error})", r.stderr
     if r.timed_out:

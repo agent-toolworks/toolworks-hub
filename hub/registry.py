@@ -98,7 +98,7 @@ class Registry:
     def _show(s, etype: str, eid: str) -> dict:
         section = {"source": s.key, "title": s.title}
         timeout = s.manifest.get("timeout_seconds", contract.DEFAULT_TIMEOUT)
-        value, problem, stderr = runner.call(s.dir, ["show", etype, eid], timeout)
+        value, problem, stderr = runner.call(s.dir, ["show", etype, eid], timeout, s.name)
         if problem:
             section["error"] = {"problem": f"show {problem}", "details": sources.stderr_lines(stderr),
                                 "at": _now_iso()}
@@ -154,7 +154,7 @@ class Registry:
     @staticmethod
     def _fetch(s, w: dict, extra: list) -> dict:
         timeout = s.manifest.get("timeout_seconds", contract.DEFAULT_TIMEOUT)
-        value, problem, stderr = runner.call(s.dir, ["fetch", w["id"], *extra], timeout)
+        value, problem, stderr = runner.call(s.dir, ["fetch", w["id"], *extra], timeout, s.name)
         if problem:
             return {"error": {"problem": f"fetch {problem}", "details": sources.stderr_lines(stderr),
                               "at": _now_iso()}}

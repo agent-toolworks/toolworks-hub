@@ -78,8 +78,8 @@ def check_run(src: str, r: Report) -> bool:
     return True
 
 
-def check_detect(src: str, r: Report):
-    value, problem, stderr = runner.call(src, ["detect"], contract.DETECT_TIMEOUT)
+def check_detect(src: str, name: str, r: Report):
+    value, problem, stderr = runner.call(src, ["detect"], contract.DETECT_TIMEOUT, name)
     if problem:
         r.add("FAIL", f"detect: {problem}", sources.stderr_lines(stderr))
         return None
@@ -98,7 +98,7 @@ def _report(r: Report, label: str, errors: list, warnings: list) -> None:
         r.add("WARN", label, [w])
 
 
-def check_fetch(src: str, widget: dict, timeout: int, r: Report) -> None:
+def check_fetch(src: str, name: str, widget: dict, timeout: int, r: Report) -> None:
     label = f"fetch {widget['id']}"
     args = ["fetch", widget["id"]]
     if widget["kind"] == "search":
@@ -106,7 +106,7 @@ def check_fetch(src: str, widget: dict, timeout: int, r: Report) -> None:
             r.add("SKIP", label, ["a search widget is checked only with example_query in the manifest"])
             return
         args += ["--query", widget["example_query"]]
-    value, problem, stderr = runner.call(src, args, timeout)
+    value, problem, stderr = runner.call(src, args, timeout, name)
     if problem:
         r.add("FAIL", f"{label}: {problem}", sources.stderr_lines(stderr))
         return
@@ -125,7 +125,7 @@ def check_show(src: str, manifest: dict, given: list, timeout: int, r: Report) -
         if rule is not None and not re.fullmatch(rule["id_pattern"], eid):
             r.add("FAIL", label, [f"{eid!r} is not a valid {etype} ID, so the hub would never ask for it"])
             continue
-        value, problem, stderr = runner.call(src, ["show", etype, eid], timeout)
+        value, problem, stderr = runner.call(src, ["show", etype, eid], timeout, manifest["name"])
         if problem:
             r.add("FAIL", f"{label}: {problem}", sources.stderr_lines(stderr))
             continue
@@ -159,7 +159,7 @@ def main(argv=None) -> int:
     manifest = check_manifest(src, r)
     if manifest is None or not check_run(src, r):
         return r.finish()
-    detected = check_detect(src, r)
+    detected = check_detect(src, manifest["name"], r)
     if detected is None:
         return r.finish()
     if detected["state"] not in sources.FETCHABLE:
@@ -171,7 +171,7 @@ def main(argv=None) -> int:
 
     timeout = manifest.get("timeout_seconds", contract.DEFAULT_TIMEOUT)
     for widget in manifest.get("widgets", []):
-        check_fetch(src, widget, timeout, r)
+        check_fetch(src, manifest["name"], widget, timeout, r)
     check_show(src, manifest, given, timeout, r)
     return r.finish()
 

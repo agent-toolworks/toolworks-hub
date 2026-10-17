@@ -11,7 +11,9 @@ published contract rather than re-implementing the tool.
 
 **Status:** the first release's scope is built: the source contract (version
 1) and its checker, the hub server with the built-in Claude Code source,
-session pages, and an example Grafana source. The token-save and code-search
+session pages, and an example Grafana source. The page has a tab per source,
+and sources can be loaded from folders you name, such as a git repo of your
+team's sources. The token-save and code-search
 sources ship inside those plugins, from token-save 0.26.0 and code-search
 1.29.0 ([token-save#43](https://github.com/agent-toolworks/token-save/pull/43),
 [code-search-fleet#114](https://github.com/agent-toolworks/code-search-fleet/pull/114)). The design covers the contract,
@@ -31,11 +33,19 @@ The server listens on 127.0.0.1 at a free port, answers only the browser
 `hub open` gave its token to, and exits after 10 minutes with no page open. It
 needs nothing but `python3`.
 
-It finds sources in three places: the built-in Claude Code source, a
-`hub-source/` folder inside each installed Claude Code plugin, and
-`~/.config/agent-toolworks/sources/`. Each is shown in one of the states in
-[docs/contract.md](docs/contract.md#states), and agent-toolworks plugins you
-have not installed are listed with their install command.
+It finds sources in four places: the built-in Claude Code source, a
+`hub-source/` folder inside each installed Claude Code plugin,
+`~/.config/agent-toolworks/sources/`, and the folders listed in
+`~/.config/agent-toolworks/hub.json`:
+
+```json
+{"source_dirs": ["~/git/team-sources"]}
+```
+
+Each source gets a tab, with a dot for its state (the states are in
+[docs/contract.md](docs/contract.md#states)); only the open tab fetches. A
+last tab lists the agent-toolworks plugins you have not installed, with their
+install commands.
 
 A session in any table links to that session's page, which gathers a section
 from every source that knows about it: the Claude Code source's transcript

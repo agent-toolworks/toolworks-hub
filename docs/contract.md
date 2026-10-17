@@ -18,9 +18,25 @@ my-source/
   page/index.html  optional: a fully custom view
 ```
 
-The hub looks for sources in three places only: inside the hub, in a
-`hub-source/` folder inside each installed Claude Code plugin, and in
-`~/.config/agent-toolworks/sources/*/`. It never downloads one.
+The hub looks for sources in these places only, in this order: inside the
+hub, in a `hub-source/` folder inside each installed Claude Code plugin, in
+`~/.config/agent-toolworks/sources/*/`, and in the folders listed in
+`~/.config/agent-toolworks/hub.json` (below). It never downloads one. Names
+are claimed in that order; a later source with a name already taken is shown
+as broken.
+
+### hub.json
+
+```json
+{"source_dirs": ["~/git/team-sources", "/opt/shared/hub-source"]}
+```
+
+Each folder in `source_dirs` that has a `source.json` is one source; any other
+folder holds one source per subfolder (folders starting with `.` are
+skipped). `~` is expanded, and a relative path is taken from the folder
+`hub.json` is in. A folder that does not exist, an unknown setting or a file
+that is not JSON is shown as a problem at the top of the page, and the rest
+of the hub carries on.
 
 ## source.json
 
@@ -44,7 +60,11 @@ Unknown fields are refused, so a misspelt field fails instead of being ignored.
 ## run
 
 The hub runs `run` with one of three commands. It runs as the user, in the
-source folder, with no stdin and the hub's environment.
+source folder, with no stdin and the hub's environment plus
+`TOOLWORKS_SOURCE_CONFIG`: the folder for this source's own settings,
+`~/.config/agent-toolworks/source-config/<name>/`. The hub only names it; it
+may not exist until the user creates it. Keep per-person settings there rather
+than beside `run`, so a source shared in a git repo never holds them.
 
 | Command | Prints | Limit |
 | --- | --- | --- |

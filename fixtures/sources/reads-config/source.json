@@ -1,0 +1,2 @@
+{"contract": 1, "name": "reads-config", "title": "reads-config fixture", "version": "0.1.0", "network": false,
+ "widgets": [{"id": "value", "kind": "stat", "title": "Value"}]}
