@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.4.0 — 2026-10-17
+
 - **New: a tab on its own page.** A tab's URL plus `/full`, such as
   `#/source/code-search/full`, shows that tab alone, filling the window, with
   no top bar or tab strip; a view fills the whole height. A pop-out icon beside
