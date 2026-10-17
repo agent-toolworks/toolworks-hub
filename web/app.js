@@ -272,12 +272,35 @@ function sourceCard(s) {
   }
   if ((s.state === 'working' || s.state === 'stale') && s.view) {
     // The hub's own page for this source, in place of its widgets.
-    card.append(el('iframe', { cls: 'view', title: s.title,
-      src: `${s.view}?source=${encodeURIComponent(s.key)}` }));
+    const frame = el('iframe', { cls: 'view', title: s.title,
+      src: `${s.view}?source=${encodeURIComponent(s.key)}` });
+    frame.addEventListener('load', () => outsideLinksInNewTabs(frame));
+    card.append(frame);
   } else if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
     card.append(el('div', { cls: 'widgets' }, s.widgets.map(w => widgetCard(s, w))));
   }
   return card;
+}
+
+// A link in a view to another site opens in a new browser tab, not in the
+// frame, where most sites refuse to show and the view would be lost. A view is
+// on the hub's origin, so its clicks can be seen here; one the page handles
+// itself (preventDefault), a modified click and a link with a target are left
+// to the browser.
+function outsideLinksInNewTabs(frame) {
+  let doc;
+  try { doc = frame.contentDocument; } catch { return; }  // the frame left the hub's origin
+  if (!doc) return;
+  doc.addEventListener('click', e => {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest && e.target.closest('a[href]');
+    if (!a || a.target || typeof a.href !== 'string') return;
+    let url;
+    try { url = new URL(a.href); } catch { return; }
+    if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) return;
+    e.preventDefault();
+    window.open(url.href, '_blank', 'noopener,noreferrer');
+  });
 }
 
 async function status(refresh) {

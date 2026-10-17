@@ -145,6 +145,13 @@ SAMEORIGIN` and a Content-Security-Policy of `default-src 'self'`, so a view
 loads nothing from the network: bundle its scripts, styles and fonts, and
 fetch remote data in `run call`.
 
+A link in a view to another site (`http://` or `https://`, not the hub)
+opens in a new browser tab, so the view stays in its frame; the hub does that
+for every view, with no `target` needed. A link with its own `target`, a
+click the page handles itself, and a page that sets `location` from script
+are left alone: to open another site from script, use `window.open(url,
+'_blank', 'noopener')`.
+
 A source's page runs on the hub's origin, inside the hub's own page, so it can
 do anything the hub's page can. That is no more than its `run` can already do
 as you, but install a source with a page only from someone you trust.

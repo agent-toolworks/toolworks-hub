@@ -15,6 +15,11 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **Fix: a link in a view to another site opens in a new tab.** It opened in
+  the view's frame, where most sites refuse to show, and the view was lost.
+  The hub now opens every `http(s)` link to another site from a view in a new
+  browser tab; links within the view work as before.
+
 ## 0.4.0 — 2026-10-17
 
 - **New: a tab on its own page.** A tab's URL plus `/full`, such as
