@@ -77,7 +77,8 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
-SETTINGS = ("source_dirs", "page_dirs")
+SETTINGS = ("source_dirs", "page_dirs", "port")
+DEFAULT_PORT = 7437
 
 
 def tilde(path: str) -> str:
@@ -90,6 +91,17 @@ def source_dirs():
     """(the folders hub.json's source_dirs names, problems). Problems with
     hub.json as a whole, such as an unknown setting, are reported here."""
     return folder_setting("source_dirs", whole_file=True)
+
+
+def port_setting():
+    """(the port hub.json names, else DEFAULT_PORT; problem or None). 0 means
+    a free port each time."""
+    path = paths.hub_config_path()
+    doc, _ = _read_json(path)
+    value = doc.get("port", DEFAULT_PORT) if isinstance(doc, dict) else DEFAULT_PORT
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 65535:
+        return DEFAULT_PORT, f"{tilde(path)}: port must be a number from 0 to 65535; using {DEFAULT_PORT}"
+    return value, None
 
 
 def folder_setting(key: str, whole_file: bool = False):

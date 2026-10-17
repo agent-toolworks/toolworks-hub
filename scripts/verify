@@ -386,11 +386,13 @@ else
   [[ $(code -H "Cookie: $JAR" -H "Host: evil.example:$PORT" "$BASE/api/status") == 403 ]] \
     && ok "right token, foreign Host header (DNS rebinding): refused" || bad "foreign Host was not refused"
   curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null "$BASE/?token=$TOKEN"
-  grep -qi "^set-cookie: hub_token_$PORT=$TOKEN; Path=/; HttpOnly; SameSite=Strict" "$TMP/headers" \
+  grep -qi "^set-cookie: hub_token_$PORT=$TOKEN; Path=/; HttpOnly; SameSite=Strict; Max-Age=31536000" "$TMP/headers" \
     && grep -qi '^location: /' "$TMP/headers" \
-    && ok "the token URL sets an HttpOnly, SameSite=Strict cookie and redirects to drop it" \
+    && ok "the token URL sets an HttpOnly, SameSite=Strict cookie that lasts a year, and redirects to drop it" \
     || bad "token URL response" "$(cat "$TMP/headers")"
   [[ $(code -H "Cookie: $JAR" "$BASE/") == 200 ]] && grep -q "Toolworks Hub" "$TMP/body" && ok "with the cookie, the page loads" || bad "page did not load"
+  curl -s --noproxy '*' -D "$TMP/headers" -o "$TMP/body" -H "Cookie: $JAR" "$BASE/static/favicon.svg"
+  grep -qi '^content-type: image/svg+xml' "$TMP/headers" && grep -q '<svg' "$TMP/body" && ok "the favicon is served as SVG" || bad "favicon" "$(cat "$TMP/headers")"
   curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null -H "Cookie: $JAR" "$BASE/api/status"
   grep -qi "^content-security-policy: default-src 'self'" "$TMP/headers" && ok "responses carry a Content-Security-Policy" || bad "no CSP"
   grep -qi '^access-control-allow-origin' "$TMP/headers" && bad "a CORS header is sent" || ok "no CORS headers, so no other origin can read a response"
@@ -474,6 +476,38 @@ OUT=$(in_home bounded 30 "$HUB" open --no-browser 2>&1); RC=$?
 [[ $RC == 0 && $OUT == "$URL1" ]] && ok "a second hub open reuses the running server" || bad "second hub open" "$URL1 / $OUT"
 OUT=$(in_home bounded 30 "$HUB" stop 2>&1); RC=$?
 expect "hub stop stops it" 0 "hub: stopped"
+OUT=$(in_home bounded 30 "$HUB" open --no-browser 2>&1); RC=$?
+[[ $RC == 0 && ${OUT#*token=} == "${URL1#*token=}" ]] && ok "a restarted hub keeps its token, so a bookmark still works" \
+  || bad "token after restart" "$URL1 / $OUT"
+[[ $(stat -f %Lp "$HOME_FIX/cache/agent-toolworks/token" 2>/dev/null || stat -c %a "$HOME_FIX/cache/agent-toolworks/token") == 600 ]] \
+  && ok "the kept token is readable by its owner only" || bad "token file mode"
+in_home bounded 30 "$HUB" stop > /dev/null 2>&1
+
+# The port: 7437 unless hub.json says otherwise, and a port in use is an
+# error that names the fix, never a quiet move to another port.
+python3 - "$ROOT/hub" "$TMP/portcfg" > "$TMP/py6p.out" 2>&1 <<'EOF'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+os.environ["XDG_CONFIG_HOME"] = sys.argv[2]
+import discovery, paths
+print("ok with no hub.json the port is 7437" if discovery.port_setting() == (7437, None) else f"bad default port: {discovery.port_setting()}")
+os.makedirs(os.path.dirname(paths.hub_config_path()), exist_ok=True)
+for value, want, label in [(8123, 8123, "a port in hub.json is used"), (0, 0, "port 0 asks for a free one"),
+                           ("80", 7437, "a port that is not a number is a problem"), (70000, 7437, "a port above 65535 is a problem")]:
+    json.dump({"port": value}, open(paths.hub_config_path(), "w"))
+    port, problem = discovery.port_setting()
+    print(f"ok {label}" if port == want and (problem is None) == (want == value) else f"bad {label}: {port} {problem}")
+EOF
+tally < "$TMP/py6p.out"
+python3 -c 'import socket,time,sys; s=socket.socket(); s.bind(("127.0.0.1",0)); s.listen(); print(s.getsockname()[1], flush=True); time.sleep(20)' > "$TMP/busy.port" &
+BUSY=$!
+for _ in $(seq 50); do [[ -s $TMP/busy.port ]] && break; sleep 0.1; done
+mkdir -p "$TMP/busycfg/agent-toolworks"
+printf '{"port": %s}\n' "$(cat "$TMP/busy.port")" > "$TMP/busycfg/agent-toolworks/hub.json"
+OUT=$(XDG_CONFIG_HOME="$TMP/busycfg" XDG_CACHE_HOME="$TMP/busycache" CLAUDE_CONFIG_DIR="$TMP/nowhere" \
+  bounded 30 python3 "$ROOT/hub/server.py" serve 2>&1); RC=$?
+expect "a port in use is an error that names the fix" 1 "is in use by another program" "or to 0 for a free port each time"
+kill $BUSY 2>/dev/null
 OUT=$(in_home bounded 30 "$HUB" stop 2>&1); RC=$?
 expect "hub stop with nothing running says so" 0 "hub: not running"
 

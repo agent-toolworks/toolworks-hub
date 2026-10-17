@@ -29,9 +29,16 @@ scripts/hub status    # every source it finds and its state, in the terminal
 scripts/hub stop
 ```
 
-The server listens on 127.0.0.1 at a free port, answers only the browser
-`hub open` gave its token to, and exits after 10 minutes with no page open. It
-needs nothing but `python3`.
+The server listens on 127.0.0.1, always at port 7437, so once `hub open` has
+opened a browser you can bookmark `http://127.0.0.1:7437/`. It answers only a
+browser `hub open` gave its token to, and exits after 10 minutes with no page
+open. It needs nothing but `python3`.
+
+To use another port, set it in `~/.config/agent-toolworks/hub.json`:
+`{"port": 8123}`, or `{"port": 0}` for a free port each time. If something else
+holds the port, `hub open` says so rather than moving. The token is kept
+between starts (in `~/.cache/agent-toolworks/token`), so the bookmark keeps
+working. Delete that file to issue a new token and sign every browser out.
 
 It finds sources in four places: the built-in Claude Code source, a
 `hub-source/` folder inside each installed Claude Code plugin,

@@ -31,8 +31,10 @@ USAGE
 
 COMMANDS
   open          start the server if it is not running, and open the hub in
-                a browser. The server listens on 127.0.0.1 only and exits
-                after 10 minutes with no page open.
+                a browser. The server listens on 127.0.0.1:7437 only (or
+                hub.json's "port") and exits after 10 minutes with no page
+                open. Once a browser has been opened this way,
+                http://127.0.0.1:7437/ can be bookmarked.
   status        every source the hub finds and its state, without starting
                 the server. --json prints what the page is built from.
   check-source  check a source folder against the source contract

@@ -67,7 +67,8 @@ class Registry:
             self._order = [s.key for s in resolved]
             self._available = discovery.not_installed()
             self._pages, page_problems = pages.find()
-            self._problems = problems + page_problems
+            _, port_problem = discovery.port_setting()
+            self._problems = problems + page_problems + ([port_problem] if port_problem else [])
             self._detected_at = time.monotonic()
 
     def status(self) -> dict:

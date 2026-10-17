@@ -11,10 +11,17 @@ launch's token:
   opens. The cookie is SameSite=Strict, so other sites' pages cannot send it.
 - There are no CORS headers, so no other origin may read a response.
 
-The port and token live in server.json in the hub's cache folder (mode 0600),
-for `hub open` and `hub stop` to find. Anything running as the user can read
-that file. The token keeps out web pages, not local processes, which can read
-everything the hub reads anyway.
+The port is the same every time -- 7437, or hub.json's "port" -- so the hub
+can be bookmarked; hub.json's "port": 0 asks for a free one each time. A port
+something else holds is an error that says so, never a quiet move elsewhere.
+
+The token is kept too, in the cache folder's `token` (mode 0600), and the
+cookie lasts a year, so a bookmark still works after the server restarts.
+Deleting the file makes the next start issue a new token, which signs out
+every browser. The running server's port and token are in server.json (mode
+0600), for `hub open` and `hub stop` to find. Anything running as the user can
+read both files. The token keeps out web pages, not local processes, which can
+read everything the hub reads anyway.
 
 The server exits after IDLE_SECONDS without a request. An open page sends a
 heartbeat every minute, so the server stays up while someone is looking.
@@ -22,6 +29,7 @@ heartbeat every minute, so the server stays up while someone is looking.
 from __future__ import annotations
 
 import argparse
+import errno
 import http.cookies
 import json
 import os
@@ -39,6 +47,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import discovery  # noqa: E402
 import paths  # noqa: E402
 from registry import Registry  # noqa: E402
 
@@ -49,6 +58,7 @@ STATIC = {
     "/": ("index.html", "text/html; charset=utf-8"),
     "/static/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/static/style.css": ("style.css", "text/css; charset=utf-8"),
+    "/static/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
 VIEW_FILE = re.compile(r"^/views/([a-z0-9-]+)/([a-z0-9-]+\.(html|js|css))$")
 VIEW_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
@@ -73,8 +83,35 @@ VIEW_HEADERS = {
 }
 
 
+COOKIE_SECONDS = 365 * 86400
+
+
 def info_path() -> str:
     return os.path.join(paths.cache_dir(), "server.json")
+
+
+def token_path() -> str:
+    return os.path.join(paths.cache_dir(), "token")
+
+
+def load_token() -> str:
+    """The hub's token: the one kept from earlier starts, else a new one,
+    written readable by its owner only."""
+    try:
+        with open(token_path(), encoding="utf-8") as f:
+            token = f.read().strip()
+        if len(token) >= 32:
+            return token
+    except OSError:
+        pass
+    token = secrets.token_urlsafe(32)
+    os.makedirs(paths.cache_dir(), mode=0o700, exist_ok=True)
+    tmp = f"{token_path()}.{os.getpid()}"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(token + "\n")
+    os.replace(tmp, token_path())
+    return token
 
 
 class Hub(ThreadingHTTPServer):
@@ -84,7 +121,7 @@ class Hub(ThreadingHTTPServer):
         super().__init__(("127.0.0.1", port), Handler)
         self.registry = registry
         self.port = self.server_address[1]
-        self.token = secrets.token_urlsafe(32)
+        self.token = load_token()
         self.cookie = f"hub_token_{self.port}"  # cookies ignore ports; keep two hubs apart
         self.hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
         self.last_request = time.monotonic()
@@ -111,7 +148,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._text(403, "That token is not this hub's. Run `hub open` again.\n")
             return self._send(303, "text/plain; charset=utf-8", b"", {
                 "Location": "/",
-                "Set-Cookie": f"{hub.cookie}={hub.token}; Path=/; HttpOnly; SameSite=Strict",
+                "Set-Cookie": f"{hub.cookie}={hub.token}; Path=/; HttpOnly; SameSite=Strict; "
+                              f"Max-Age={COOKIE_SECONDS}",
             })
         if not self._authorised():
             return self._text(403, "This browser has no token for this hub. Open it with `hub open`.\n")
@@ -223,9 +261,19 @@ def ping(info: dict) -> bool:
 
 # --- commands ----------------------------------------------------------------
 
-def serve(port: int = 0, idle: bool = True) -> int:
+def serve(port=None, idle: bool = True) -> int:
+    if port is None:
+        port, _ = discovery.port_setting()
     registry = Registry()
-    hub = Hub(port, registry)
+    try:
+        hub = Hub(port, registry)
+    except OSError as e:
+        if e.errno in (errno.EADDRINUSE, errno.EACCES):
+            print(f"hub: port {port} is in use by another program. Set \"port\" in "
+                  f"{discovery.tilde(paths.hub_config_path())} to another number, or to 0 for a "
+                  f"free port each time.", file=sys.stderr, flush=True)
+            return 1
+        raise
     # Detect in the background so the first request is answered at once; it
     # waits on the registry's lock until detection finishes.
     threading.Thread(target=registry.refresh, kwargs={"force": True}, daemon=True).start()
@@ -271,6 +319,9 @@ def open_hub(browser: bool = True) -> int:
                 break
             if proc.poll() is not None or time.monotonic() > deadline:
                 print(f"hub: the server did not start; see {log_path}", file=sys.stderr)
+                last = _last_line(log_path)
+                if last:
+                    print(last, file=sys.stderr)
                 return 1
             time.sleep(0.1)
     url = f"http://127.0.0.1:{info['port']}/?token={info['token']}"
@@ -279,6 +330,16 @@ def open_hub(browser: bool = True) -> int:
     if browser and opener:
         subprocess.run([opener, url], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return 0
+
+
+def _last_line(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            f.seek(max(0, os.fstat(f.fileno()).st_size - 2000))
+            lines = f.read().decode("utf-8", "replace").strip().splitlines()
+        return lines[-1] if lines else ""
+    except OSError:
+        return ""
 
 
 def stop_hub() -> int:
@@ -308,7 +369,8 @@ def main(argv=None) -> int:
     o = sub.add_parser("open", help="start the server if needed and open the hub in a browser")
     o.add_argument("--no-browser", action="store_true", help="only print the URL")
     s = sub.add_parser("serve", help="run the server in the foreground")
-    s.add_argument("--port", type=int, default=0, help="default: a free port")
+    s.add_argument("--port", type=int, default=None,
+                   help=f"default: hub.json's port, else {discovery.DEFAULT_PORT}; 0 for a free port")
     s.add_argument("--no-idle-exit", action="store_true", help="keep running with no requests")
     sub.add_parser("stop", help="stop the running server")
     a = p.parse_args(argv)
