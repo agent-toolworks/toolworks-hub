@@ -1,0 +1,29 @@
+{
+  "title": "Grafana alerts",
+  "description": "Where to look when something fires. Replace grafana.example.com with your Grafana.",
+  "sections": [
+    {
+      "title": "Alerts",
+      "links": [
+        {"title": "Firing now", "url": "https://grafana.example.com/alerting/list?view=list&search=state:firing",
+         "description": "every alert rule that is firing"},
+        {"title": "All alert rules", "url": "https://grafana.example.com/alerting/list"},
+        {"title": "Silences", "url": "https://grafana.example.com/alerting/silences",
+         "description": "check here before you page someone"}
+      ]
+    },
+    {
+      "title": "Routing",
+      "links": [
+        {"title": "Contact points", "url": "https://grafana.example.com/alerting/notifications"},
+        {"title": "Notification policies", "url": "https://grafana.example.com/alerting/routes"}
+      ]
+    },
+    {
+      "title": "In the hub",
+      "links": [
+        {"title": "Search the fleet for an alert's name", "url": "#/source/code-search"}
+      ]
+    }
+  ]
+}

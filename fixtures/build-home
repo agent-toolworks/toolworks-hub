@@ -25,6 +25,10 @@ What it holds, and what the hub must make of it:
               .git and a file beside them), solo/ (itself a
               source), and a folder that does not exist        2 folder sources, 1 problem
               team-config's settings in source-config/          working, read from there
+  pages       pages/: alerts (good, with a #/ link), broken
+              (a javascript: URL and an unknown field);
+              page_dirs team-pages/: runbooks, and an alerts
+              whose name is taken                               2 pages, 2 problems
   sessions    one active now, one three days ago, a file that
               is not a transcript, a folder named like one      2 sessions, 1 active today
 """
@@ -123,7 +127,20 @@ def main(root):
         f.write("Team sources.\n")
     source("not-set-up", os.path.join(root, "solo"), "solo")
     write_json(os.path.join(root, "config", "agent-toolworks", "hub.json"),
-               {"source_dirs": ["../../team", os.path.join(root, "solo"), "~/missing"]})
+               {"source_dirs": ["../../team", os.path.join(root, "solo"), "~/missing"],
+                "page_dirs": ["../../team-pages"]})
+    link = lambda t, u: {"title": t, "url": u}
+    pages = os.path.join(root, "config", "agent-toolworks", "pages")
+    write_json(os.path.join(pages, "alerts.json"), {"title": "Alerts", "sections": [
+        {"title": "Grafana", "links": [link("Firing", "https://grafana.example.com/alerting/list"),
+                                       link("Search", "#/source/code-search")]}]})
+    write_json(os.path.join(pages, "broken.json"), {"title": "Broken", "colour": "red", "sections": [
+        {"title": "x", "links": [link("run me", "javascript:alert(1)")]}]})
+    team_pages = os.path.join(root, "team-pages")
+    write_json(os.path.join(team_pages, "runbooks.json"), {"title": "Runbooks", "sections": [
+        {"title": "On call", "links": [link("Paging", "https://wiki.example.com/paging")]}]})
+    write_json(os.path.join(team_pages, "alerts.json"), {"title": "Team alerts", "sections": [
+        {"title": "x", "links": [link("y", "https://example.com")]}]})
     write_json(os.path.join(root, "config", "agent-toolworks", "source-config", "team-config", "config.json"),
                {"value": 7})
 

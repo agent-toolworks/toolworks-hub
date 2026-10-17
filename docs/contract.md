@@ -28,8 +28,12 @@ as broken.
 ### hub.json
 
 ```json
-{"source_dirs": ["~/git/team-sources", "/opt/shared/hub-source"]}
+{"source_dirs": ["~/git/team-sources", "/opt/shared/hub-source"],
+ "page_dirs": ["~/git/team-pages"]}
 ```
+
+(`page_dirs` holds link pages, not sources: see
+[custom-pages.md](custom-pages.md).)
 
 Each folder in `source_dirs` that has a `source.json` is one source; any other
 folder holds one source per subfolder (folders starting with `.` are

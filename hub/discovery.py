@@ -77,28 +77,43 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
+SETTINGS = ("source_dirs", "page_dirs")
+
+
+def tilde(path: str) -> str:
+    """A path as a person writes it: under the home folder, with ~."""
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+
+
 def source_dirs():
-    """(the folders hub.json's source_dirs names, problems). `~` is expanded,
-    and a relative path is taken from the folder hub.json is in."""
+    """(the folders hub.json's source_dirs names, problems). Problems with
+    hub.json as a whole, such as an unknown setting, are reported here."""
+    return folder_setting("source_dirs", whole_file=True)
+
+
+def folder_setting(key: str, whole_file: bool = False):
+    """(the folders a hub.json setting names, problems). `~` is expanded, and
+    a relative path is taken from the folder hub.json is in."""
     full_path = paths.hub_config_path()
     doc, problem = _read_json(full_path)
     if doc is None:
-        return [], [problem] if problem else []
-    home = os.path.expanduser("~")
-    path = "~" + full_path[len(home):] if full_path.startswith(home + os.sep) else full_path
+        return [], [problem] if problem and whole_file else []
+    path = tilde(full_path)
     if not isinstance(doc, dict):
-        return [], [f"{path} is not a JSON object"]
-    problems = [f"{path}: unknown setting '{k}'" for k in sorted(doc) if k != "source_dirs"]
-    dirs = doc.get("source_dirs", [])
+        return [], [f"{path} is not a JSON object"] if whole_file else []
+    problems = [f"{path}: unknown setting '{k}'" for k in sorted(doc)
+                if k not in SETTINGS] if whole_file else []
+    dirs = doc.get(key, [])
     if not isinstance(dirs, list) or not all(isinstance(d, str) and d for d in dirs):
-        return [], problems + [f"{path}: source_dirs must be a list of folder paths"]
+        return [], problems + [f"{path}: {key} must be a list of folder paths"]
     out = []
     for d in dirs:
         full = os.path.join(os.path.dirname(full_path), os.path.expanduser(d))
         if os.path.isdir(full):
             out.append(os.path.normpath(full))
         else:
-            problems.append(f"{path}: source_dirs names {d}, which is not a folder")
+            problems.append(f"{path}: {key} names {d}, which is not a folder")
     return out, problems
 
 

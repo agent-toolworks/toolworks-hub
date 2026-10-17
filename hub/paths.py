@@ -6,7 +6,8 @@ it reads, so the hub and the tool never disagree about where things are.
   token-save documents for history.db.
 - The hub's settings and the user's sources: $XDG_CONFIG_HOME/agent-toolworks,
   else ~/.config/agent-toolworks, beside repo-fleet's ~/.config/repo-fleet.
-- The hub's own settings file: hub.json in that folder.
+- The hub's own settings file: hub.json in that folder; the user's link
+  pages: pages/*.json there.
 - Each source's private settings: source-config/<name>/ in that folder, kept
   out of the source's own folder so a source shared in a git repo never holds
   one person's settings.
@@ -36,6 +37,10 @@ def cache_dir() -> str:
 
 def user_sources_dir() -> str:
     return os.path.join(config_dir(), "sources")
+
+
+def user_pages_dir() -> str:
+    return os.path.join(config_dir(), "pages")
 
 
 def hub_config_path() -> str:

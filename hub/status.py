@@ -37,6 +37,11 @@ def main(argv=None) -> int:
             print(f"  {'':<{width}}  {'':<8}  fix: {s['fix']}")
         for d in s["details"]:
             print(f"  {'':<{width}}  {'':<8}  {d}")
+    if st["pages"]:
+        print("\nPAGES")
+        w = max(len(x["name"]) for x in st["pages"])
+        for x in st["pages"]:
+            print(f"  {x['name']:<{w}}  {x['title']}  ({sum(len(s['links']) for s in x['sections'])} links)")
     if st["available"]:
         print("\nNOT INSTALLED")
         w = max(len(x["name"]) for x in st["available"])

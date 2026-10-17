@@ -57,6 +57,15 @@ A session in any table links to that session's page, which gathers a section
 from every source that knows about it: the Claude Code source's transcript
 facts, token-save's cost over the session, and so on.
 
+## Adding a page of links
+
+A tab can also be a page of links, in sections, read from a JSON file in
+`~/.config/agent-toolworks/pages/` (or a team folder in `hub.json`'s
+`page_dirs`): Grafana alert views, dashboards, runbooks.
+[docs/custom-pages.md](docs/custom-pages.md) shows how, and
+[`examples/pages/grafana-alerts.json`](examples/pages/grafana-alerts.json) is
+a page for Grafana alerts.
+
 ## Writing a source
 
 A source is a folder with a manifest and a program that prints JSON.

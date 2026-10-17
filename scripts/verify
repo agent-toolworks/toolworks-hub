@@ -246,7 +246,20 @@ print("ok source_dirs are read in order, after the user's folder" if [s["key"] f
       else f"bad order: {[s['key'] for s in st['sources']]}")
 probs = st["problems"]
 print("ok a source_dirs folder that does not exist is a problem, not a failure"
-      if len(probs) == 1 and "source_dirs names ~/missing, which is not a folder" in probs[0] else f"bad problems: {probs}")
+      if sum("source_dirs names ~/missing, which is not a folder" in p for p in probs) == 1 else f"bad problems: {probs}")
+pages = {p["name"]: p for p in st["pages"]}
+print("ok link pages: the user's alerts, then page_dirs' runbooks" if list(pages) == ["alerts", "runbooks"]
+      else f"bad pages: {list(pages)}")
+print("ok a page keeps its sections and links" if pages.get("alerts", {}).get("sections", [{}])[0].get("links", [{}])[1].get("url") == "#/source/code-search"
+      else f"bad alerts page: {pages.get('alerts')}")
+broken = [p for p in probs if "broken.json breaks the page format" in p]
+print("ok a page that breaks the format is a problem naming every fault, not a tab"
+      if broken and "unknown field 'colour'" in broken[0] and "'javascript:alert(1)' is not an http(s) URL" in broken[0]
+      else f"bad broken page: {probs}")
+print("ok a page name already taken is a problem, and the first one keeps it"
+      if any("team-pages/alerts.json: the page name 'alerts' is already used" in p for p in probs) and pages["alerts"]["title"] == "Alerts"
+      else f"bad duplicate page: {probs}")
+print(f"ok nothing else is a problem" if len(probs) == 3 else f"bad problems: {probs}")
 names = [a["name"] for a in st["available"]]
 print("ok only fleet-workspace is listed as not installed" if names == ["fleet-workspace"]
       else f"bad not installed: {names}")
@@ -461,6 +474,16 @@ head_ "8. VERSIONS"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
+
+python3 - "$ROOT/hub" "$ROOT/examples/pages" > "$TMP/py9a.out" 2>&1 <<'EOF'
+import json, os, sys
+sys.path.insert(0, sys.argv[1])
+import pages
+for n in sorted(os.listdir(sys.argv[2])):
+    errors = pages.check(json.load(open(os.path.join(sys.argv[2], n))))
+    print(f"ok examples/pages/{n} meets the page format" if not errors else f"bad examples/pages/{n}: {errors}")
+EOF
+tally < "$TMP/py9a.out"
 
 head_ "9. GRAFANA EXAMPLE"
 # examples/grafana against a fake Grafana on 127.0.0.1: no network, no Keychain.

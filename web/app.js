@@ -249,6 +249,7 @@ function renderProblems(problems) {
 
 const NOT_INSTALLED = '#/not-installed';
 const sourceHref = key => `#/source/${encodeURIComponent(key)}`;
+const pageHref = name => `#/page/${encodeURIComponent(name)}`;
 
 function remember(hash) {
   try { localStorage.setItem('hub.tab', hash); } catch { /* no storage: start at the first tab */ }
@@ -270,6 +271,7 @@ function renderTabs(st, current) {
     title: state ? STATE_LABEL[state] || state : null,
   }, state ? el('span', { cls: `dot state-${state}`, 'aria-hidden': 'true' }) : null, label);
   const tabs = orderedSources(st).map(s => tab(sourceHref(s.key), s.title, s.state));
+  for (const p of st.pages || []) tabs.push(tab(pageHref(p.name), p.title));
   if (st.available.length) tabs.push(tab(NOT_INSTALLED, `Not installed (${st.available.length})`));
   document.getElementById('tabs').replaceChildren(...tabs);
   const active = document.querySelector('.tab[aria-current]');
@@ -328,8 +330,9 @@ async function loadTab(wanted, refresh) {
   const st = await status(refresh);
   if (!st) return;
   const sources = orderedSources(st);
+  const linkPages = st.pages || [];
   const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0
-    : sources.some(s => sourceHref(s.key) === h));
+    : sources.some(s => sourceHref(s.key) === h) || linkPages.some(p => pageHref(p.name) === h));
   // An unknown or stale tab (a source that went away) falls back to the first.
   const hash = [wanted, remembered()].find(valid)
     || (sources.length ? sourceHref(sources[0].key) : NOT_INSTALLED);
@@ -346,8 +349,31 @@ async function loadTab(wanted, refresh) {
           el('code', {}, a.install))))));
     return;
   }
+  const page = linkPages.find(p => pageHref(p.name) === hash);
+  if (page) {
+    panel.replaceChildren(linkPage(page));
+    return;
+  }
   const s = sources.find(x => sourceHref(x.key) === hash);
   panel.replaceChildren(s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.'));
+}
+
+// A link page: sections of links from a JSON file (hub/pages.py). An http(s)
+// link opens in a new browser tab; a #/ link is a page of the hub.
+function linkPage(p) {
+  const link = l => {
+    const outside = !l.url.startsWith('#/');
+    return el('li', {},
+      el('a', { href: l.url, target: outside ? '_blank' : null, rel: outside ? 'noopener noreferrer' : null }, l.title),
+      outside ? el('span', { cls: 'muted host' }, ` ${new URL(l.url).host}`) : null,
+      l.description ? el('p', { cls: 'muted' }, l.description) : null);
+  };
+  return el('section', { cls: 'source' },
+    el('header', { cls: 'source-head' }, el('h2', {}, p.title),
+      el('span', { cls: 'badge', title: p.file }, 'page')),
+    p.description ? el('p', { cls: 'muted' }, p.description) : null,
+    el('div', { cls: 'link-sections' }, p.sections.map(sec =>
+      el('article', { cls: 'widget' }, el('h3', {}, sec.title), el('ul', { cls: 'links' }, sec.links.map(link))))));
 }
 
 function route(refresh) {

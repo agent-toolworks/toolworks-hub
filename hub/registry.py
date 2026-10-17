@@ -25,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import contract  # noqa: E402
 import discovery  # noqa: E402
+import pages  # noqa: E402
 import runner  # noqa: E402
 import sources  # noqa: E402
 from version import VERSION  # noqa: E402
@@ -50,6 +51,7 @@ class Registry:
         self._order: list = []
         self._available: list = []
         self._problems: list = []
+        self._pages: list = []
         self._detected_at = None       # time.monotonic()
         self._cache: dict = {}         # (key, widget id) -> entry
         self._widget_locks: dict = {}
@@ -64,7 +66,8 @@ class Registry:
             self._sources = {s.key: s for s in resolved}
             self._order = [s.key for s in resolved]
             self._available = discovery.not_installed()
-            self._problems = problems
+            self._pages, page_problems = pages.find()
+            self._problems = problems + page_problems
             self._detected_at = time.monotonic()
 
     def status(self) -> dict:
@@ -74,6 +77,7 @@ class Registry:
                 "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION},
                 "sources": [{**s.public(), "view": view_for(s.name)} for s in loaded],
                 "available": list(self._available),
+                "pages": list(self._pages),
                 "problems": list(self._problems),
                 # A reference is drawn as a link only when something can show it.
                 "linkable": sorted({t for s in loaded if s.state in sources.FETCHABLE
