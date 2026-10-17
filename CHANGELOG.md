@@ -15,12 +15,6 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
-- **New: "update available" in the top bar.** The running hub asks its
-  checkout's origin for release tags (`git ls-remote --tags`, with your git
-  credentials, tag names only) at start and every 6 hours, and shows a newer
-  release beside its own version, linked to the release notes. Set
-  `"check_updates": false` in hub.json to turn it off.
-
 ## 0.2.0 — 2026-10-17
 
 - **New: a tab per source.** The page was one long column of every source's

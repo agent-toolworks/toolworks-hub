@@ -289,15 +289,6 @@ async function status(refresh) {
     v.href = st.hub.release_url;
     v.title = `toolworks-hub ${st.hub.version}, source contract ${st.hub.contract}: release notes`;
     v.hidden = false;
-    // A newer release, when the server's background check has found one.
-    const u = document.getElementById('update');
-    u.hidden = !st.hub.update_available;
-    if (st.hub.update_available) {
-      u.textContent = `v${st.hub.latest} available`;
-      u.href = st.hub.update_url;
-      u.title = `toolworks-hub ${st.hub.latest} is released; this is ${st.hub.version}. ` +
-        'Update: git pull in the hub checkout, then hub stop && hub open.';
-    }
     document.getElementById('updated').textContent = `checked ${new Date().toLocaleTimeString()}`;
     renderProblems(st.problems || []);
     renderQuota(st);

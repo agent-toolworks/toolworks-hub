@@ -77,7 +77,7 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
-SETTINGS = ("source_dirs", "page_dirs", "port", "check_updates")
+SETTINGS = ("source_dirs", "page_dirs", "port")
 DEFAULT_PORT = 7437
 
 

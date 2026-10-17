@@ -129,8 +129,7 @@ def main(root):
     write_json(os.path.join(root, "config", "agent-toolworks", "hub.json"),
                {"source_dirs": ["../../team", os.path.join(root, "solo"), "~/missing"],
                 "page_dirs": ["../../team-pages"],
-                "port": 0,  # a free port: verify must not collide with a hub that is running
-                "check_updates": False})  # and verify makes no network call
+                "port": 0})  # a free port: verify must not collide with a hub that is running
     link = lambda t, u: {"title": t, "url": u}
     pages = os.path.join(root, "config", "agent-toolworks", "pages")
     write_json(os.path.join(pages, "alerts.json"), {"title": "Alerts", "sections": [

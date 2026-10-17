@@ -40,12 +40,6 @@ holds the port, `hub open` says so rather than moving. The token is kept
 between starts (in `~/.cache/agent-toolworks/token`), so the bookmark keeps
 working. Delete that file to issue a new token and sign every browser out.
 
-The top bar shows the hub's version, and a newer release when there is one.
-To know, the running hub asks its checkout's origin for release tags (`git
-ls-remote --tags`, with your git credentials, reading tag names only) at
-start and every 6 hours. That is the one network call the hub makes; set
-`"check_updates": false` in `hub.json` to turn it off.
-
 It finds sources in four places: the built-in Claude Code source, a
 `hub-source/` folder inside each installed Claude Code plugin,
 `~/.config/agent-toolworks/sources/`, and the folders listed in

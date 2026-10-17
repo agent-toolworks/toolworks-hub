@@ -59,7 +59,6 @@ input {
   font-variant-numeric: tabular-nums;
 }
 .version:hover { color: var(--accent); border-color: var(--accent); }
-.version.update { color: var(--warn); border-color: var(--warn); }
 .top #refresh { margin-left: auto; }
 .quota { display: flex; gap: 16px; align-items: center; margin-left: auto; }
 .quota + #refresh { margin-left: 0; }

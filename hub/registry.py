@@ -28,7 +28,6 @@ import discovery  # noqa: E402
 import pages  # noqa: E402
 import runner  # noqa: E402
 import sources  # noqa: E402
-import updates  # noqa: E402
 from version import RELEASES, VERSION  # noqa: E402
 
 DETECT_EVERY = 30  # seconds
@@ -46,10 +45,7 @@ def _now_iso() -> str:
 
 
 class Registry:
-    def __init__(self, check_updates: bool = False):
-        # Only the server checks for a newer hub; `hub status` and verify's
-        # registries make no network call.
-        self._updates = updates.Checker() if check_updates else None
+    def __init__(self):
         self._lock = threading.Lock()
         self._sources: dict = {}       # key -> Source
         self._order: list = []
@@ -76,15 +72,11 @@ class Registry:
             self._detected_at = time.monotonic()
 
     def status(self) -> dict:
-        if self._updates:
-            self._updates.poke()
-        update = self._updates.status() if self._updates else {"latest": None, "update": False, "url": None}
         with self._lock:
             loaded = [self._sources[k] for k in self._order]
             return {
                 "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION,
-                        "release_url": f"{RELEASES}/tag/v{VERSION}", "latest": update["latest"],
-                        "update_available": update["update"], "update_url": update["url"]},
+                        "release_url": f"{RELEASES}/tag/v{VERSION}"},
                 "sources": [{**s.public(), "view": view_for(s.name)} for s in loaded],
                 "available": list(self._available),
                 "pages": list(self._pages),
