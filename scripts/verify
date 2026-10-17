@@ -258,6 +258,7 @@ want = {
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
     "bad-show": ("user", "working", ""),
+    "own-page": ("user", "working", ""),
     "team-config": ("folder", "working", ""),
     "solo": ("folder", "not_set_up", "no history database"),
 }
@@ -412,8 +413,8 @@ else
   # The hub's page for code-search: a view, framed by the hub's page only,
   # answered through `run call`.
   code -H "Cookie: $JAR" "$BASE/api/status" > /dev/null
-  python3 -c 'import json,sys; v={s["key"]: s["view"] for s in json.load(open(sys.argv[1]))["sources"]}; assert v.pop("code-search") == "/views/code-search/index.html" and not any(v.values()), v' "$TMP/body" \
-    && ok "code-search has the hub's page, and no other source does" || bad "views in status" "$(head -c 400 "$TMP/body")"
+  python3 -c 'import json,sys; v={s["key"]: s["view"] for s in json.load(open(sys.argv[1]))["sources"]}; assert v.pop("code-search") == "/views/code-search/index.html" and v.pop("own-page") == "/sources/own-page/page/index.html" and not any(v.values()), v' "$TMP/body" \
+    && ok "code-search has the hub's page, own-page its own, and no other source has one" || bad "views in status" "$(head -c 400 "$TMP/body")"
   for f in index.html view.js view.css; do
     curl -s --noproxy '*' -D "$TMP/headers" -o "$TMP/body" -H "Cookie: $JAR" "$BASE/views/code-search/$f"
     if grep -qi "^content-security-policy: .*frame-ancestors 'self'" "$TMP/headers" && grep -qi '^x-frame-options: SAMEORIGIN' "$TMP/headers" \
@@ -423,6 +424,25 @@ else
   grep -qiE "(src|href)[[:space:]]*=[[:space:]]*[\"']?(https?:)?//" "$ROOT/web/views/code-search/index.html" \
     && bad "the view loads something remote" || ok "the view loads nothing from the network"
   [[ $(code -H "Cookie: $JAR" "$BASE/views/code-search/..%2Fapp.js") == 404 ]] && ok "a view path cannot climb out of its folder" || bad "view path escape"
+  # A source's own page: page/ in its folder, nested paths and images too,
+  # under the same headers as a view the hub ships.
+  for f in index.html _lib/App.js img/dot.svg; do
+    curl -s --noproxy '*' -D "$TMP/headers" -o "$TMP/body" -H "Cookie: $JAR" "$BASE/sources/own-page/page/$f"
+    if grep -qi "^content-security-policy: .*frame-ancestors 'self'" "$TMP/headers" && grep -qi '^x-frame-options: SAMEORIGIN' "$TMP/headers" \
+       && head -1 "$TMP/headers" | grep -q ' 200' && cmp -s "$TMP/body" "$FIX/own-page/page/$f"; then ok "own page $f: served from the source's folder, framable by the hub's own page only"
+    else bad "own page $f" "$(cat "$TMP/headers")"; fi
+  done
+  grep -qi '^content-type: image/svg+xml' "$TMP/headers" && ok "an image in a page is served with its type" || bad "own page svg type" "$(cat "$TMP/headers")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/notes.txt") == 404 ]] && ok "a page file of another type is not served" || bad "own page txt"
+  [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/.secret.js") == 404 ]] && ok "a hidden page file is not served" || bad "own page hidden file"
+  [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/..%2Fsource.json") == 404 \
+     && $(code --path-as-is -H "Cookie: $JAR" "$BASE/sources/own-page/page/img/../../source.json") == 404 ]] && ok "a page path cannot climb out of page/" || bad "own page path escape"
+  [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/outside.json") == 404 ]] && ok "a link out of page/ is not followed" || bad "own page symlink escape"
+  [[ $(code -H "Cookie: $JAR" "$BASE/sources/solo/page/index.html") == 404 ]] && ok "a source with no page serves none" || bad "page of a source without one"
+  [[ $(code "$BASE/sources/own-page/page/index.html") == 403 ]] && ok "a page needs the token" || bad "own page without token"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/own-page/call/echo?args=%7B%7D") == 200 ]] \
+    && python3 -c 'import json,sys; assert json.load(open(sys.argv[1])) == {"op": "echo", "args": {}}' "$TMP/body" \
+    && ok "a source with its own page is called" || bad "own page call" "$(head -c 400 "$TMP/body")"
   curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null -H "Cookie: $JAR" "$BASE/"
   grep -qi '^x-frame-options: DENY' "$TMP/headers" && ok "the hub's own page still cannot be framed" || bad "hub page framing"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/echo?args=%7B%22q%22%3A%22a%20b%22%7D") == 200 ]] \
@@ -432,7 +452,7 @@ else
     && ok "a call that fails is a 502 with its stderr" || bad "call fail" "$(head -c 400 "$TMP/body")"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/echo?args=%5B1%5D") == 400 ]] && ok "call arguments must be a JSON object" || bad "call array args"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search/call/Bad%20Op") == 400 ]] && ok "a call name is checked before run is called" || bad "call bad op"
-  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/call/echo") == 404 ]] && ok "a source the hub has no page for is never called" || bad "call without a view"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/call/echo") == 404 ]] && ok "a source with no page is never called" || bad "call without a view"
   [[ $(code "$BASE/api/sources/code-search/call/echo") == 403 ]] && ok "a call needs the token" || bad "call without token"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
   [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"

@@ -60,9 +60,15 @@ STATIC = {
     "/static/style.css": ("style.css", "text/css; charset=utf-8"),
     "/static/favicon.svg": ("favicon.svg", "image/svg+xml"),
 }
-VIEW_FILE = re.compile(r"^/views/([a-z0-9-]+)/([a-z0-9-]+\.(html|js|css))$")
+VIEW_FILE = re.compile(r"^/views/([a-z0-9-]+)/(.+)$")
+PAGE_FILE = re.compile(r"^/sources/([^/]+)/page/(.+)$")
+# A file of a view, in its folder or below. No part starts with a dot, so a
+# path can neither climb out (..) nor reach a hidden file.
+VIEW_PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*(/[A-Za-z0-9_][A-Za-z0-9_.-]*)*$")
 VIEW_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
-              "css": "text/css; charset=utf-8"}
+              "css": "text/css; charset=utf-8", "json": "application/json",
+              "svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg",
+              "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
 WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
 CALL = re.compile(r"^/api/sources/([^/]+)/call/([^/]+)$")
 ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
@@ -74,8 +80,8 @@ HEADERS = {
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'none'; "
                                "base-uri 'none'; form-action 'self'",
 }
-# A view is the hub's own page for one source, shown in a frame on the hub's
-# page, and nowhere else.
+# A view is one source's page -- the source's own, or one the hub ships --
+# shown in a frame on the hub's page, and nowhere else.
 VIEW_HEADERS = {
     "X-Frame-Options": "SAMEORIGIN",
     "Content-Security-Policy": "default-src 'self'; img-src 'self' data:; frame-ancestors 'self'; "
@@ -160,11 +166,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, ctype, f.read())
         m = VIEW_FILE.match(url.path)
         if m:
-            path = os.path.join(WEB, "views", m.group(1), m.group(2))
-            if not os.path.isfile(path):
+            return self._view_file(os.path.join(WEB, "views", m.group(1)), m.group(2))
+        m = PAGE_FILE.match(url.path)
+        if m:
+            folder = hub.registry.page_dir(urllib.parse.unquote(m.group(1)))
+            if folder is None:
                 return self._json(404, {"error": "not found"})
-            with open(path, "rb") as f:
-                return self._send(200, VIEW_TYPES[m.group(3)], f.read(), VIEW_HEADERS)
+            return self._view_file(folder, m.group(2))
         if url.path == "/api/ping":
             return self._json(200, {"ok": True})
         if url.path == "/api/status":
@@ -185,6 +193,17 @@ class Handler(BaseHTTPRequestHandler):
             hub.registry.refresh()
             return self._json(*hub.registry.entity(etype, eid))
         return self._json(404, {"error": "not found"})
+
+    def _view_file(self, folder: str, rel: str) -> None:
+        """A file of a view, read from inside its folder only: a symlink that
+        leads out of the folder is not followed."""
+        ctype = VIEW_TYPES.get(rel.rsplit(".", 1)[-1].lower()) if VIEW_PATH.match(rel) else None
+        root = os.path.realpath(folder)
+        path = os.path.realpath(os.path.join(root, rel))
+        if ctype is None or not path.startswith(root + os.sep) or not os.path.isfile(path):
+            return self._json(404, {"error": "not found"})
+        with open(path, "rb") as f:
+            return self._send(200, ctype, f.read(), VIEW_HEADERS)
 
     def _authorised(self) -> bool:
         jar = http.cookies.SimpleCookie()

@@ -8,7 +8,8 @@ and served with the failure beside it, so a source that breaks for a minute
 shows old data with a warning rather than an empty panel.
 
 Search widgets are fetched on every query and never cached, and so are calls
-from a view (a page the hub ships for one source, under web/views/<name>/).
+from a view: a source's own page (its manifest's "page", inside its page/
+folder), or else a page the hub ships for it, under web/views/<name>/.
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ import re
 import sys
 import threading
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -35,9 +37,13 @@ VIEWS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OP = re.compile(r"^[a-z][a-z0-9_-]*$")
 
 
-def view_for(name: str):
-    """The URL of the page the hub ships for this source, if it has one."""
-    return f"/views/{name}/index.html" if os.path.isfile(os.path.join(VIEWS, name, "index.html")) else None
+def view_for(s):
+    """The URL of this source's view, if it has one: its own page first, else
+    the page the hub ships for it."""
+    page = (s.manifest or {}).get("page")
+    if page:
+        return f"/sources/{urllib.parse.quote(s.key, safe='')}/{page}"
+    return f"/views/{s.name}/index.html" if os.path.isfile(os.path.join(VIEWS, s.name, "index.html")) else None
 
 
 def _now_iso() -> str:
@@ -77,7 +83,7 @@ class Registry:
             return {
                 "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION,
                         "release_url": f"{RELEASES}/tag/v{VERSION}"},
-                "sources": [{**s.public(), "view": view_for(s.name)} for s in loaded],
+                "sources": [{**s.public(), "view": view_for(s)} for s in loaded],
                 "available": list(self._available),
                 "pages": list(self._pages),
                 "problems": list(self._problems),
@@ -159,6 +165,15 @@ class Registry:
             self._cache[(key, widget_id)] = entry
             return 200, self._payload(entry)
 
+    def page_dir(self, key: str):
+        """The page/ folder of a working source that declares a page, which
+        the server serves files from; None for any other source."""
+        with self._lock:
+            s = self._sources.get(key)
+        if s is None or s.state not in sources.FETCHABLE or not (s.manifest or {}).get("page"):
+            return None
+        return os.path.join(s.dir, "page")
+
     def call(self, key: str, op: str, args: str):
         """(HTTP status, payload) for `run call <op> <args>`, which only a view
         uses. The answer is the view's to read, so the hub checks only that it
@@ -167,7 +182,7 @@ class Registry:
             s = self._sources.get(key)
         if s is None:
             return 404, {"error": f"there is no source '{key}'"}
-        if view_for(s.name) is None:
+        if view_for(s) is None:
             return 404, {"error": f"the hub has no page for {s.title}, so nothing calls it"}
         if s.state not in sources.FETCHABLE:
             return 409, {"error": f"{s.title} is {s.state.replace('_', ' ')}: {s.reason}"}

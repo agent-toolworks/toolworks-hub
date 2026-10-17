@@ -118,6 +118,9 @@ def main(root):
     source("newer-contract", os.path.join(user, "from-future"), "from-future")
     source("passes", os.path.join(user, "imposter"), "claude")
     source("wrong-shape", os.path.join(user, "bad-show"), "bad-show")
+    source("own-page", os.path.join(user, "own-page"), "own-page")
+    # A link inside page/ to a file outside it, which the hub must not follow.
+    os.symlink("../source.json", os.path.join(user, "own-page", "page", "outside.json"))
 
     # source_dirs: relative to hub.json's folder, absolute, and ~ (HOME is root/home).
     team = os.path.join(root, "team")

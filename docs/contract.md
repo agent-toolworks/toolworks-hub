@@ -15,7 +15,7 @@ scripts/hub check-source path/to/my-source --entity session=<a session id>
 my-source/
   source.json      the manifest
   run              any executable; prints JSON on stdout
-  page/index.html  optional: a fully custom view
+  page/            optional: the source's own view (index.html and its files)
 ```
 
 The hub looks for sources in these places only, in this order: inside the
@@ -57,7 +57,7 @@ of the hub carries on.
 | `shows` | no | Entity types this source can add a section to, e.g. `["session"]`. Each must be in [`entities.json`](../contract/entities.json). |
 | `refresh_seconds` | no | How often each widget is fetched again. Default 300, minimum 10. |
 | `timeout_seconds` | no | Limit on each `fetch` and `show`. Default 10, 1 to 60. |
-| `page` | no | A custom page inside `page/`, such as `page/index.html`. |
+| `page` | no | The source's own view: an HTML file inside `page/`, such as `page/index.html`. See [Views](#views). |
 
 Unknown fields are refused, so a misspelt field fails instead of being ignored.
 
@@ -76,8 +76,8 @@ than beside `run`, so a source shared in a git repo never holds them.
 | `run fetch <widget> [--query <text>]` | one widget's data ([`fetch.schema.json`](../contract/fetch.schema.json)); `--query` only for `search` | `timeout_seconds` |
 | `run show <entity> <id>` | this source's section of an entity page ([`show.schema.json`](../contract/show.schema.json)) | `timeout_seconds` |
 
-A source the hub ships its own page for (a *view*, below) also answers a
-fourth command, which only that page uses:
+A source with a page (a *view*, below) also answers a fourth command, which
+only that page uses:
 
 | Command | Prints | Limit |
 | --- | --- | --- |
@@ -120,13 +120,34 @@ the hub does not call `fetch` or `show`.
 
 ## Views
 
-A view is a page the hub ships for one source, in `web/views/<source
-name>/`. When that source is working, its tab shows the view, in a frame,
-instead of its widgets, and the view asks the source questions through
-`/api/sources/<key>/call/<op>?args=<json>`, which runs `run call`. The page is
-the hub's code, so it changes with the hub; the source only answers. The
-code-search view (Search, Fleet and Questions over the fleet) is the one view
-today: it was code-search's `cs serve` page before code-search 1.30.0.
+A view is one source's own page. When that source is working, its tab shows
+the view, in a frame, instead of its widgets, and the view asks the source
+questions through `/api/sources/<key>/call/<op>?args=<json>`, which runs
+`run call`. The frame's URL carries `?source=<key>`.
+
+A view comes from one of two places, and the first one found wins:
+
+- **The source's own `page/` folder.** `"page": "page/index.html"` in
+  `source.json` makes the hub serve `page/` in place, at
+  `/sources/<key>/page/...`, while the source is working. The page ships and
+  changes with the source.
+- **The hub's `web/views/<source name>/`.** The page is the hub's code, so it
+  changes with the hub; the source only answers. The code-search view (Search,
+  Fleet and Questions over the fleet) is one: it was code-search's `cs serve`
+  page before code-search 1.30.0.
+
+Either way, files may sit in folders below the view's, and are served when
+their names hold only letters, digits, `_`, `.` and `-` and do not start with
+a dot, and they end in `.html`, `.js`, `.css`, `.json`, `.svg`, `.png`,
+`.jpg`, `.jpeg`, `.gif` or `.webp`. Anything else is a 404, and so is a link
+that leads out of the folder. Views are served with `X-Frame-Options:
+SAMEORIGIN` and a Content-Security-Policy of `default-src 'self'`, so a view
+loads nothing from the network: bundle its scripts, styles and fonts, and
+fetch remote data in `run call`.
+
+A source's page runs on the hub's origin, inside the hub's own page, so it can
+do anything the hub's page can. That is no more than its `run` can already do
+as you, but install a source with a page only from someone you trust.
 
 ## Widget shapes
 

@@ -67,7 +67,7 @@
       "items": {"$ref": "widgets.schema.json#/$defs/slug"}
     },
     "page": {
-      "description": "A custom page, relative to the source folder, inside page/.",
+      "description": "The source's own view: an HTML file inside page/, relative to the source folder. The hub serves page/ and shows the page as the source's tab while it is working; see docs/contract.md, Views.",
       "type": "string",
       "pattern": "^page/.+\\.html$"
     }

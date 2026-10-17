@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# A source with its own page (page/ in this folder), which the hub serves as
+# the source's view; the page asks through `run call`, and echo answers.
+set -euo pipefail
+case "${1:-}" in
+  detect) echo '{"state": "working"}' ;;
+  call)
+    case "${2:-}" in
+      echo) printf '{"op": "echo", "args": %s}\n' "$3" ;;
+      *) echo "unknown call: $2" >&2; exit 2 ;;
+    esac ;;
+  *) echo "unknown command: $*" >&2; exit 2 ;;
+esac

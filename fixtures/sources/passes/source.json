@@ -11,6 +11,5 @@
     {"id": "notes", "kind": "list", "title": "Notes"},
     {"id": "find", "kind": "search", "title": "Search", "example_query": "history"}
   ],
-  "shows": ["session"],
-  "page": "page/index.html"
+  "shows": ["session"]
 }

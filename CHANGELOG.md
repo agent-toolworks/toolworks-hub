@@ -15,6 +15,13 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **New: a source's own page.** `"page": "page/index.html"` in a source's
+  `source.json` was checked and then ignored. The hub now serves the source's
+  `page/` folder in place and shows the page as the source's tab, the way it
+  shows the code-search view, and `run call` works for it. A view, the
+  source's or the hub's, may now have files in folders, names with capitals
+  or `_`, and `.json` and image files. (#3)
+
 ## 0.2.0 — 2026-10-17
 
 - **New: a tab per source.** The page was one long column of every source's
