@@ -1,0 +1,16 @@
+{
+  "contract": 1,
+  "name": "passes",
+  "title": "Passing fixture",
+  "version": "0.1.0",
+  "network": false,
+  "widgets": [
+    {"id": "sessions-today", "kind": "stat", "title": "Sessions today"},
+    {"id": "cost", "kind": "timeseries", "title": "Cost (USD)"},
+    {"id": "recent", "kind": "table", "title": "Recent sessions"},
+    {"id": "notes", "kind": "list", "title": "Notes"},
+    {"id": "find", "kind": "search", "title": "Search", "example_query": "history"}
+  ],
+  "shows": ["session"],
+  "page": "page/index.html"
+}

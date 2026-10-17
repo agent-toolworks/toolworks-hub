@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Hangs, and leaves a child behind: both must be stopped. verify reads the
+# child's pid from HUB_TEST_PIDFILE to check it was killed too.
+sleep 60 &
+echo $! > "${HUB_TEST_PIDFILE:-/dev/null}"
+sleep 60

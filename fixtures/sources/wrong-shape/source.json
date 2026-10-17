@@ -1,0 +1,37 @@
+{
+  "contract": 1,
+  "name": "wrong-shape",
+  "title": "Wrong shapes",
+  "version": "0.1.0",
+  "network": false,
+  "widgets": [
+    {
+      "id": "t",
+      "kind": "table",
+      "title": "Table"
+    },
+    {
+      "id": "cell",
+      "kind": "table",
+      "title": "Bad cell"
+    },
+    {
+      "id": "s",
+      "kind": "stat",
+      "title": "Stat"
+    },
+    {
+      "id": "ts",
+      "kind": "timeseries",
+      "title": "Series"
+    },
+    {
+      "id": "q",
+      "kind": "search",
+      "title": "Search"
+    }
+  ],
+  "shows": [
+    "session"
+  ]
+}

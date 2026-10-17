@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Installed but not set up: fetch must never be called.
+case "${1:-}" in
+  detect) echo '{"state": "not_set_up", "reason": "no history database", "fix": "ts fixes apply statusline"}' ;;
+  *) echo "fetch was called on a source that is not set up" >&2; exit 1 ;;
+esac

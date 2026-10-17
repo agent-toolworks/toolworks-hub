@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "manifest.schema.json",
+  "title": "Source manifest (source.json), contract 1",
+  "type": "object",
+  "required": ["contract", "name", "title", "version", "network"],
+  "additionalProperties": false,
+  "properties": {
+    "contract": {
+      "description": "The contract version this source was written against.",
+      "const": 1
+    },
+    "name": {
+      "description": "Unique among sources; used in URLs.",
+      "$ref": "widgets.schema.json#/$defs/slug"
+    },
+    "title": {"type": "string", "minLength": 1},
+    "version": {"type": "string", "minLength": 1},
+    "refresh_seconds": {
+      "description": "How often the hub fetches each widget again.",
+      "type": "integer",
+      "minimum": 10,
+      "default": 300
+    },
+    "timeout_seconds": {
+      "description": "Hard limit on each fetch and show. detect has its own fixed limit.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 60,
+      "default": 10
+    },
+    "network": {
+      "description": "Whether run makes network calls. Required, so that every source says, and shown to the user.",
+      "type": "boolean"
+    },
+    "widgets": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "widgets.schema.json#/$defs/slug"},
+          "kind": {"$ref": "widgets.schema.json#/$defs/kind"},
+          "title": {"type": "string", "minLength": 1},
+          "example_query": {
+            "description": "For a search widget: a query hub check-source runs it with.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "shows": {
+      "description": "Entity types this source can show a section for. Each must be defined in entities.json.",
+      "type": "array",
+      "uniqueItems": true,
+      "default": [],
+      "items": {"$ref": "widgets.schema.json#/$defs/slug"}
+    },
+    "page": {
+      "description": "A custom page, relative to the source folder, inside page/.",
+      "type": "string",
+      "pattern": "^page/.+\\.html$"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "show.schema.json",
+  "title": "Output of `run show <entity> <id>`, contract 1",
+  "description": "This source's section of an entity page. An empty widgets list means the source knows nothing about this entity, and the hub leaves the section out.",
+  "type": "object",
+  "required": ["widgets"],
+  "additionalProperties": false,
+  "properties": {
+    "widgets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "title", "data"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"$ref": "widgets.schema.json#/$defs/slug"},
+          "kind": {"$ref": "widgets.schema.json#/$defs/kind"},
+          "title": {"type": "string", "minLength": 1},
+          "data": {},
+          "as_of": {"$ref": "widgets.schema.json#/$defs/timestamp"},
+          "notice": {"type": "string", "minLength": 1}
+        },
+        "allOf": [{"$ref": "widgets.schema.json#/$defs/kind_data"}]
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "types": {
+    "session": {
+      "title": "Claude Code session",
+      "id": "The session ID Claude Code reports: token-save's session_id column, and the transcript's file name under ~/.claude/projects/.",
+      "id_pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    }
+  }
+}

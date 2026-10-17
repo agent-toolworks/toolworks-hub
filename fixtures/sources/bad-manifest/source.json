@@ -1,0 +1,13 @@
+{
+  "contract": 1,
+  "name": "Bad Name",
+  "title": "",
+  "version": "1",
+  "network": "no",
+  "colour": "blue",
+  "widgets": [
+    {"id": "a", "kind": "pie", "title": "A"},
+    {"id": "a", "kind": "stat", "title": "A again"}
+  ],
+  "page": "page/../../secret.html"
+}

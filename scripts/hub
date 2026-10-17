@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# hub — the toolworks-hub command line.
+#
+#   check-source  check a source folder against the source contract
+#
+# python3 is the one requirement; the hub installs nothing.
+set -euo pipefail
+
+SELF="${BASH_SOURCE[0]}"
+while [[ -L "$SELF" ]]; do
+  target=$(readlink "$SELF")
+  [[ $target == /* ]] && SELF=$target || SELF="$(dirname "$SELF")/$target"
+done
+ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+die() { printf '%s\n' "$*" >&2; exit 2; }
+
+usage() {
+  cat <<'EOF'
+hub — toolworks-hub
+
+USAGE
+  hub check-source <folder> [--entity TYPE=ID ...]
+
+COMMANDS
+  check-source  check a source folder against the source contract
+                (docs/contract.md). Exit 0 when nothing failed, 1 when
+                something did, 2 for bad usage.
+EOF
+}
+
+command -v python3 >/dev/null 2>&1 || die "hub: python3 is required and was not found on PATH"
+
+case "${1:-}" in
+  check-source) shift; exec python3 "$ROOT/hub/check_source.py" "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) usage >&2; die "hub: unknown command '$1'" ;;
+esac

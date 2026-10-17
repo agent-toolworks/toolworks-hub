@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "detect.schema.json",
+  "title": "Output of `run detect`, contract 1",
+  "description": "not_installed is not here: a source that is not installed cannot run, so the hub works that state out itself.",
+  "type": "object",
+  "required": ["state"],
+  "additionalProperties": false,
+  "properties": {
+    "state": {
+      "enum": ["not_set_up", "off", "incompatible", "stale", "broken", "working"]
+    },
+    "reason": {
+      "description": "One line saying why, in words the user can act on.",
+      "type": "string",
+      "minLength": 1
+    },
+    "fix": {
+      "description": "The command or step that fixes it, when there is one. The hub shows it and never runs it.",
+      "type": "string",
+      "minLength": 1
+    },
+    "tool_version": {"type": "string", "minLength": 1}
+  },
+  "if": {
+    "required": ["state"],
+    "properties": {"state": {"enum": ["not_set_up", "off", "incompatible", "stale", "broken"]}}
+  },
+  "then": {"required": ["reason"]}
+}

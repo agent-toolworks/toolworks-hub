@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fetch.schema.json",
+  "title": "Output of `run fetch <widget>`, contract 1",
+  "type": "object",
+  "required": ["kind", "data"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": {"$ref": "widgets.schema.json#/$defs/kind"},
+    "data": {},
+    "as_of": {
+      "description": "When the data was true, if not now. The hub shows it.",
+      "$ref": "widgets.schema.json#/$defs/timestamp"
+    },
+    "notice": {
+      "description": "A warning shown with the widget, such as a partial or degraded answer.",
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [{"$ref": "widgets.schema.json#/$defs/kind_data"}]
+}

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "widgets.schema.json",
+  "title": "Widget data shapes, contract 1",
+  "description": "The shapes a source's fetch and show output may take. Referenced by fetch.schema.json, show.schema.json and manifest.schema.json.",
+  "$defs": {
+    "slug": {
+      "title": "a slug: lowercase letters, digits and dashes, starting with a letter or digit, at most 64 characters",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "kind": {
+      "enum": ["timeseries", "table", "stat", "list", "search"]
+    },
+    "timestamp": {
+      "title": "an ISO 8601 time with an offset, such as 2026-10-17T09:00:00Z",
+      "description": "ISO 8601 with an explicit offset. A local time without one is ambiguous to a reader in another zone.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2}(\\.[0-9]+)?)?(Z|[+-][0-9]{2}:[0-9]{2})$"
+    },
+    "ref": {
+      "description": "A link to an entity. The hub draws it as a link when an installed source shows that entity type, and as plain text otherwise.",
+      "type": "object",
+      "required": ["ref", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {"$ref": "#/$defs/slug"},
+        "id": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1}
+      }
+    },
+    "cell": {
+      "anyOf": [
+        {"type": ["string", "number", "boolean", "null"]},
+        {"$ref": "#/$defs/ref"}
+      ]
+    },
+    "stat": {
+      "type": "object",
+      "required": ["value"],
+      "additionalProperties": false,
+      "properties": {
+        "value": {"type": ["number", "string"]},
+        "unit": {"type": "string", "minLength": 1},
+        "label": {"type": "string", "minLength": 1}
+      }
+    },
+    "timeseries": {
+      "type": "object",
+      "required": ["series"],
+      "additionalProperties": false,
+      "properties": {
+        "unit": {"type": "string", "minLength": 1},
+        "series": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "points"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "points": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["t", "v"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "t": {"$ref": "#/$defs/timestamp"},
+                    "v": {"type": ["number", "null"]}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "table": {
+      "description": "Every key in a row must be one of the column ids. JSON Schema cannot say that, so hub check-source checks it.",
+      "type": "object",
+      "required": ["columns", "rows"],
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "title"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/$defs/slug"},
+              "title": {"type": "string", "minLength": 1},
+              "unit": {"type": "string", "minLength": 1}
+            }
+          }
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": {"$ref": "#/$defs/cell"}
+          }
+        }
+      }
+    },
+    "list": {
+      "type": "object",
+      "required": ["items"],
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["text"],
+            "additionalProperties": false,
+            "properties": {
+              "text": {"type": "string", "minLength": 1},
+              "detail": {"type": "string", "minLength": 1},
+              "ref": {"$ref": "#/$defs/ref"}
+            }
+          }
+        }
+      }
+    },
+    "search": {
+      "type": "object",
+      "required": ["results"],
+      "additionalProperties": false,
+      "properties": {
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["title"],
+            "additionalProperties": false,
+            "properties": {
+              "title": {"type": "string", "minLength": 1},
+              "detail": {"type": "string", "minLength": 1},
+              "location": {"type": "string", "minLength": 1},
+              "evidence": {
+                "description": "How the source knows: code-search's resolved, textual and so on. Shown beside the result, because it decides how much a missing result is worth.",
+                "type": "string",
+                "minLength": 1
+              },
+              "ref": {"$ref": "#/$defs/ref"}
+            }
+          }
+        }
+      }
+    },
+    "kind_data": {
+      "description": "Ties data to kind. Used with allOf by any object that carries both.",
+      "allOf": [
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "stat"}}}, "then": {"properties": {"data": {"$ref": "#/$defs/stat"}}}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "timeseries"}}}, "then": {"properties": {"data": {"$ref": "#/$defs/timeseries"}}}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "table"}}}, "then": {"properties": {"data": {"$ref": "#/$defs/table"}}}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "list"}}}, "then": {"properties": {"data": {"$ref": "#/$defs/list"}}}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "search"}}}, "then": {"properties": {"data": {"$ref": "#/$defs/search"}}}}
+      ]
+    }
+  }
+}

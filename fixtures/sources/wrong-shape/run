@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Each widget breaks the contract in one known way; verify names each fault.
+case "${1:-} ${2:-}" in
+  "detect ") echo '{"state": "working"}' ;;
+  "fetch t") echo '{"kind": "table", "data": {"columns": [{"id": "session", "title": "Session"}], "rows": [{"session": {"ref": "session", "id": "not-a-uuid"}, "ghost": 1}]}}' ;;
+  "fetch cell") echo '{"kind": "table", "data": {"columns": [{"id": "session", "title": "Session"}], "rows": [{"session": {"name": "x"}}]}}' ;;
+  "fetch s") echo '{"kind": "table", "data": {"value": 1}}' ;;
+  "fetch ts") echo '{"kind": "timeseries", "data": {"series": [{"name": "n", "points": [{"t": "2026-10-16T12:00:00", "v": "high"}]}]}}' ;;
+  "show session") echo '{"widgets": [{"id": "x", "kind": "stat", "title": "X", "data": {"value": 1, "colour": "red"}}]}' ;;
+esac
