@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.3.0 — 2026-10-17
+
 - **New: a source's own page.** `"page": "page/index.html"` in a source's
   `source.json` was checked and then ignored. The hub now serves the source's
   `page/` folder in place and shows the page as the source's tab, the way it
