@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.3.1 — 2026-10-17
+
 - **Fix: a view can ship its fonts.** The contract tells a view to bundle its
   fonts, but `.woff2` and `.woff` files were a 404. They are now served, as
   `font/woff2` and `font/woff`. (#4)
