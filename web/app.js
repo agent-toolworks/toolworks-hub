@@ -167,11 +167,11 @@ const RENDER = {
   },
 };
 
-// A time on a chart's axis: the hour for a day or less, the day and hour up to
-// a week, the date beyond.
+// A time on a chart's axis: the hour up to 12 hours, the day and hour up to a
+// week (24h would otherwise start and end on the same hour), the date beyond.
 function fmtTick(t, spanMs) {
   const d = new Date(t);
-  if (spanMs <= 86400e3) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (spanMs <= 12 * 3600e3) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
   if (spanMs <= 7 * 86400e3) return d.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
