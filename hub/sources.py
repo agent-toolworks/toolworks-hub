@@ -57,6 +57,14 @@ def load_manifest(src: str):
     ids = [w.get("id") for w in widgets]
     for dup in sorted({i for i in ids if isinstance(i, str) and ids.count(i) > 1}):
         errors.append(f"$.widgets: id '{dup}' is used more than once")
+    version = m.get("contract")
+    for i, w in enumerate(widgets):
+        for field, v in sorted(contract.WIDGET_ADDED_IN.items()):
+            if field in w and isinstance(version, int) and version < v:
+                errors.append(f"$.widgets[{i}].{field}: arrived in contract {v}, and this source "
+                              f"declares contract {version}; set \"contract\": {v}")
+        if "ranges" in w and w.get("kind") != "timeseries":
+            errors.append(f"$.widgets[{i}].ranges: only a timeseries widget has ranges")
     page = m.get("page")
     if isinstance(page, str):
         root = os.path.realpath(src)
@@ -110,7 +118,8 @@ class Source:
             "details": self.details, "tool_version": self.tool_version,
             "version": m.get("version"), "network": m.get("network", False),
             "refresh_seconds": m.get("refresh_seconds", 300),
-            "widgets": [{"id": w["id"], "kind": w["kind"], "title": w["title"]}
+            "widgets": [{"id": w["id"], "kind": w["kind"], "title": w["title"],
+                         **({"ranges": w["ranges"]} if "ranges" in w else {})}
                         for w in m.get("widgets", [])],
             "shows": m.get("shows", []),
         }

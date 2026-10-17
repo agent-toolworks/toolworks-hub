@@ -20,11 +20,12 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTRACT_DIR = os.path.join(ROOT, "contract")
 
-CONTRACT_VERSION = 2           # the version of contract/ this hub implements
-SUPPORTED = (1, 2)             # versions it reads; 1's shapes are a subset of 2's
+CONTRACT_VERSION = 3           # the version of contract/ this hub implements
+SUPPORTED = (1, 2, 3)          # versions it reads; each one's shapes are a subset of the next's
 # Fields a version added, so a source that prints one says it needs that
 # version: an older hub would refuse the output as an unknown field.
 ADDED_IN = {("stat", "resets_at"): 2}
+WIDGET_ADDED_IN = {"ranges": 3}    # manifest widget fields, the same way
 DETECT_TIMEOUT = 5             # seconds; detect runs on every hub start
 DEFAULT_TIMEOUT = 10           # seconds, for fetch and show; see manifest timeout_seconds
 CALL_TIMEOUT = 600             # seconds, for call: a language server's first run can take minutes

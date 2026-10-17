@@ -10,7 +10,7 @@ with any subset of components installed, including none, and reads each tool's
 published contract rather than re-implementing the tool.
 
 **Status:** the first release's scope is built: the source contract (version
-2, which also reads 1) and its checker, the hub server with the built-in Claude Code source,
+3, which also reads 1 and 2) and its checker, the hub server with the built-in Claude Code source,
 session pages, and an example Grafana source. The page has a tab per source,
 and sources can be loaded from folders you name, such as a git repo of your
 team's sources. The token-save and code-search

@@ -162,6 +162,9 @@ iframe.view {
 .series-3 { stroke: var(--s3); color: var(--s3); }
 .series-4 { stroke: var(--s4); color: var(--s4); }
 .series-5 { stroke: var(--s5); color: var(--s5); }
+.ranges { display: flex; gap: 4px; flex-wrap: wrap; margin: 0 0 8px; }
+.ranges button { padding: 2px 10px; font-size: 13px; color: var(--muted); }
+.ranges button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
 .legend { list-style: none; display: flex; gap: 16px; padding: 0; margin: 6px 0 0; font-size: 13px; }
 .legend li::before { content: "●"; margin-right: 4px; }
 

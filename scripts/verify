@@ -111,8 +111,25 @@ def case(what, instance, schema, want_valid, needle=""):
         print(f"bad {what}: {errors or 'no errors'}")
 
 case("a minimal manifest is valid", M, "manifest.schema.json", True)
-case("contract true is not a contract version", {**M, "contract": True}, "manifest.schema.json", False, "must be one of 1, 2")
+case("contract true is not a contract version", {**M, "contract": True}, "manifest.schema.json", False, "must be one of 1, 2, 3")
 case("contract 2 is valid", {**M, "contract": 2}, "manifest.schema.json", True)
+_TS = {"id": "q", "kind": "timeseries", "title": "Q"}
+case("a timeseries may list its ranges", {**M, "contract": 3, "widgets": [{**_TS, "ranges": ["6h", "24h", "30d"]}]}, "manifest.schema.json", True)
+case("a range is hours or days", {**M, "contract": 3, "widgets": [{**_TS, "ranges": ["5m"]}]}, "manifest.schema.json", False, "ranges[0]")
+case("ranges may not repeat", {**M, "contract": 3, "widgets": [{**_TS, "ranges": ["6h", "6h"]}]}, "manifest.schema.json", False, "ranges")
+import json as _json, os as _os, tempfile as _tmp, sources as _s
+def _manifest_errors(m):
+    d = _tmp.mkdtemp()
+    _json.dump(m, open(_os.path.join(d, "source.json"), "w"))
+    return _s.load_manifest(d)[1]
+_e = _manifest_errors({**M, "contract": 2, "widgets": [{**_TS, "ranges": ["6h"]}]})
+print("ok a source on contract 2 that lists ranges is told to declare contract 3"
+      if any('set "contract": 3' in e for e in _e) else f"bad ranges on contract 2: {_e}")
+_e = _manifest_errors({**M, "contract": 3, "widgets": [{"id": "n", "kind": "stat", "title": "N", "ranges": ["6h"]}]})
+print("ok only a timeseries widget has ranges" if any("only a timeseries widget has ranges" in e for e in _e) else f"bad ranges on a stat: {_e}")
+print("ok ranges reach the page in the status" if _s.Source(key="x", name="x", dir="/", origin="user",
+      manifest={**M, "contract": 3, "widgets": [{**_TS, "ranges": ["6h"]}]}).public()["widgets"][0].get("ranges") == ["6h"]
+      else "bad ranges are not in the status")
 case("a stat may say when it resets", {"kind": "stat", "data": {"value": 3, "resets_at": "2026-10-18T12:40:00+03:00"}}, "fetch.schema.json", True)
 import contract as _c
 _v = {"kind": "stat", "data": {"value": 3, "resets_at": "2026-10-18T12:40:00Z"}}
@@ -176,7 +193,7 @@ expect "bad-manifest: every fault named" 1 \
   "id 'a' is used more than once" "points outside the source folder"
 
 check newer-contract
-expect "newer-contract: refused as written for another contract" 1 "written for contract 3"
+expect "newer-contract: refused as written for another contract" 1 "written for contract 4"
 
 check no-run
 expect "no-run: refused" 1 "there is no \`run\` program"
@@ -237,7 +254,7 @@ want = {
     "claude": ("built-in", "working", ""),
     "token-save-fixture": ("plugin", "working", ""),
     "code-search": ("plugin", "working", ""),
-    "from-future": ("user", "incompatible", "written for source contract 3"),
+    "from-future": ("user", "incompatible", "written for source contract 4"),
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
     "bad-show": ("user", "working", ""),
@@ -492,6 +509,16 @@ console.log(got === [40, (4 * 24 + 8) * 60, 7 * 24 * 60 - 60, ""].join(",")
   : "bad resets in minutes: " + got);
 EOF
   tally < "$TMP/node7b.out"
+  node - "$ROOT/web/app.js" > "$TMP/node7c.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const m = src.match(/^function rangeMs\([\s\S]*?^}/m);
+const rangeMs = new Function(m[0] + "\nreturn rangeMs;")();
+const got = ["6h", "12h", "3d", "30d", "5m", "0h"].map(rangeMs).join(",");
+console.log(got === [6 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3, "", ""].join(",")
+  ? "ok a range of 6h, 12h, 3d or 30d is that many milliseconds, and 5m or 0h is none"
+  : "bad rangeMs: " + got);
+EOF
+  tally < "$TMP/node7c.out"
 else
   printf '  SKIP  the code-search view grouping: node is not installed\n'
 fi

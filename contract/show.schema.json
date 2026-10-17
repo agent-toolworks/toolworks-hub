@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "show.schema.json",
-  "title": "Output of `run show <entity> <id>`, contract 2",
+  "title": "Output of `run show <entity> <id>`, contract 3",
   "description": "This source's section of an entity page. An empty widgets list means the source knows nothing about this entity, and the hub leaves the section out.",
   "type": "object",
   "required": ["widgets"],

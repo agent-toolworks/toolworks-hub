@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "widgets.schema.json",
-  "title": "Widget data shapes, contract 2",
+  "title": "Widget data shapes, contract 3",
   "description": "The shapes a source's fetch and show output may take. Referenced by fetch.schema.json, show.schema.json and manifest.schema.json.",
   "$defs": {
     "slug": {

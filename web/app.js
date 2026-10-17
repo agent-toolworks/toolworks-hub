@@ -121,16 +121,23 @@ const RENDER = {
         r.detail ? el('p', { cls: 'muted' }, r.detail) : null)));
   },
 
-  timeseries(d) {
+  // span: when the widget has ranges, [from, to] in ms -- the axis covers it
+  // whether or not there are points at its start, so a gap reads as a gap.
+  timeseries(d, span) {
+    const inSpan = t => !span || (t >= span[0] && t <= span[1]);
     const points = [];
-    for (const s of d.series) for (const p of s.points) if (p.v != null) points.push([Date.parse(p.t), p.v]);
-    if (!points.length) return el('p', { cls: 'muted' }, 'No data yet.');
-    let t0 = points.reduce((m, p) => Math.min(m, p[0]), Infinity);
-    let t1 = points.reduce((m, p) => Math.max(m, p[0]), -Infinity);
+    for (const s of d.series) for (const p of s.points) {
+      if (p.v != null && inSpan(Date.parse(p.t))) points.push([Date.parse(p.t), p.v]);
+    }
+    if (!points.length) return el('p', { cls: 'muted' }, span ? 'No data in this range.' : 'No data yet.');
+    let t0 = span ? span[0] : points.reduce((m, p) => Math.min(m, p[0]), Infinity);
+    let t1 = span ? span[1] : points.reduce((m, p) => Math.max(m, p[0]), -Infinity);
     let v0 = points.reduce((m, p) => Math.min(m, p[1]), 0);
     let v1 = points.reduce((m, p) => Math.max(m, p[1]), -Infinity);
+    if (d.unit === '%' && v1 <= 100) v1 = 100;  // a share reads against the whole
     if (t0 === t1) { t0 -= 3600e3; t1 += 3600e3; }
     if (v0 === v1) v1 = v0 + 1;
+    const tick = t => fmtTick(t, t1 - t0);
     const W = 560, H = 200, L = 56, R = 16, T = 12, B = 28;
     const x = t => L + (t - t0) / (t1 - t0) * (W - L - R);
     const y = v => T + (1 - (v - v0) / (v1 - v0)) * (H - T - B);
@@ -140,11 +147,13 @@ const RENDER = {
       svg('line', { x1: L, x2: W - R, y1: y(v0), y2: y(v0), cls: 'axis' }),
       svg('text', { x: L - 6, y: y(v1) + 4, 'text-anchor': 'end', cls: 'tick' }, fmtNumber(v1) + unit),
       svg('text', { x: L - 6, y: y(v0) + 4, 'text-anchor': 'end', cls: 'tick' }, fmtNumber(v0)),
-      svg('text', { x: L, y: H - 8, cls: 'tick' }, new Date(t0).toLocaleDateString()),
-      svg('text', { x: W - R, y: H - 8, 'text-anchor': 'end', cls: 'tick' }, new Date(t1).toLocaleDateString()));
+      svg('text', { x: L, y: H - 8, cls: 'tick' }, tick(t0)),
+      svg('text', { x: (L + W - R) / 2, y: H - 8, 'text-anchor': 'middle', cls: 'tick' }, tick((t0 + t1) / 2)),
+      svg('text', { x: W - R, y: H - 8, 'text-anchor': 'end', cls: 'tick' }, tick(t1)));
     d.series.forEach((s, i) => {
       let path = '', pen = false;
       for (const p of s.points) {
+        if (!inSpan(Date.parse(p.t))) continue;
         if (p.v == null) { pen = false; continue; }  // a gap breaks the line
         path += `${pen ? 'L' : 'M'}${x(Date.parse(p.t)).toFixed(1)} ${y(p.v).toFixed(1)}`;
         pen = true;
@@ -158,7 +167,42 @@ const RENDER = {
   },
 };
 
-function renderPayload(p, body, meta) {
+// A time on a chart's axis: the hour for a day or less, the day and hour up to
+// a week, the date beyond.
+function fmtTick(t, spanMs) {
+  const d = new Date(t);
+  if (spanMs <= 86400e3) return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  if (spanMs <= 7 * 86400e3) return d.toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+// "6h" / "7d" (contract 3's ranges) in milliseconds.
+function rangeMs(r) {
+  const m = /^([1-9][0-9]*)([hd])$/.exec(r);
+  return m ? Number(m[1]) * (m[2] === 'h' ? 3600e3 : 86400e3) : null;
+}
+
+// The range buttons above a timeseries widget that lists ranges. The choice
+// is kept per widget, in this browser only.
+function rangeBar(key, ranges, onPick) {
+  let current = ranges[0];
+  try { const saved = localStorage.getItem(key); if (ranges.includes(saved)) current = saved; } catch { /* no storage */ }
+  const bar = el('div', { cls: 'ranges', role: 'group', 'aria-label': 'Time range' });
+  const draw = () => bar.replaceChildren(...ranges.map(r => {
+    const b = el('button', { type: 'button', 'aria-pressed': r === current ? 'true' : 'false' }, r);
+    b.addEventListener('click', () => {
+      current = r;
+      try { localStorage.setItem(key, r); } catch { /* the choice lasts this page only */ }
+      draw();
+      onPick();
+    });
+    return b;
+  }));
+  draw();
+  return { bar, span: () => [Date.now() - rangeMs(current), Date.now()] };
+}
+
+function renderPayload(p, body, meta, range) {
   body.replaceChildren();
   if (p.error) {
     const when = p.error.at ? ` ${ago(p.error.at)}` : '';
@@ -169,7 +213,7 @@ function renderPayload(p, body, meta) {
     body.append(err);
   }
   if (p.notice) body.append(el('p', { cls: 'notice' }, p.notice));
-  if (p.data !== undefined && RENDER[p.kind]) body.append(RENDER[p.kind](p.data));
+  if (p.data !== undefined && RENDER[p.kind]) body.append(RENDER[p.kind](p.data, range && range.span()));
   tickLeft();
   meta.textContent = [p.as_of && `as of ${fmtTime(p.as_of)}`, p.fetched_at && `fetched ${ago(p.fetched_at)}`]
     .filter(Boolean).join(' · ');
@@ -196,8 +240,15 @@ function widgetCard(source, w) {
     return card;
   }
 
+  // A timeseries with ranges keeps its last payload, so a new range redraws
+  // at once without fetching: fetch already returned the longest range.
+  let last = null;
+  const range = w.kind === 'timeseries' && w.ranges
+    ? rangeBar(`hub.range.${source.key}.${w.id}`, w.ranges, () => last && renderPayload(last, body, meta, range))
+    : null;
+  if (range) card.insertBefore(range.bar, body);
   const load = async () => {
-    try { renderPayload(await api(url), body, meta); }
+    try { last = await api(url); renderPayload(last, body, meta, range); }
     catch (err) { body.replaceChildren(el('p', { cls: 'error' }, err.message)); }
   };
   load();

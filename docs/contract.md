@@ -1,4 +1,4 @@
-# The source contract, version 2
+# The source contract, version 3
 
 A source is a folder the hub can show: a manifest saying what it offers and a
 program that prints JSON. The hub's own sources and the ones you write follow
@@ -48,12 +48,12 @@ of the hub carries on.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `contract` | yes | `2` (or `1`), the contract version the source was written for. Any other value makes the source *incompatible*. |
+| `contract` | yes | `3` (or `2`, `1`), the contract version the source was written for. Any other value makes the source *incompatible*. |
 | `name` | yes | Unique among sources: lowercase letters, digits and dashes. Used in URLs. |
 | `title` | yes | Shown as the source's heading. |
 | `version` | yes | The source's own version. |
 | `network` | yes | Whether `run` makes network calls. Required so every source says; the hub shows it. |
-| `widgets` | no | `[{id, kind, title}]`. `kind` is one of the shapes below. A `search` widget may add `example_query`, which check-source runs it with. |
+| `widgets` | no | `[{id, kind, title}]`. `kind` is one of the shapes below. A `search` widget may add `example_query`, which check-source runs it with. A `timeseries` widget may add `ranges` (contract 3), such as `["6h", "24h", "7d", "30d"]`: the hub shows them as buttons, the first one first, and filters the points to the chosen range. `fetch` returns the longest range; the hub never asks for less. |
 | `shows` | no | Entity types this source can add a section to, e.g. `["session"]`. Each must be in [`entities.json`](../contract/entities.json). |
 | `refresh_seconds` | no | How often each widget is fetched again. Default 300, minimum 10. |
 | `timeout_seconds` | no | Limit on each `fetch` and `show`. Default 10, 1 to 60. |
@@ -192,16 +192,17 @@ an ID that breaks its type's rule is an error.
   older hub. The hub shows a source written for a contract it does not read as
   *incompatible*.
 - **A hub reads older contracts too**, when a version only adds fields: this
-  hub implements 2 and reads 1, so a source never has to move just because the
-  hub did. A source moves to a new version when it prints a field that version
+  hub implements 3 and reads 1 and 2, so a source never has to move just
+  because the hub did. A source moves to a new version when it prints a field that version
   added, and must then declare it; `check-source` fails a source that prints
-  `resets_at` while declaring contract 1, because a contract-1 hub would
-  refuse it.
+  `resets_at` while declaring contract 1, or lists `ranges` while declaring
+  2, because an older hub would refuse it.
 
 | Version | Adds |
 | --- | --- |
 | 1 | the first contract |
 | 2 | a stat's `resets_at` |
+| 3 | a timeseries widget's `ranges` |
 - **`entities.json` `version`** goes up when a type is added. An existing
   type's ID rule never changes; that would be a contract change.
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "fetch.schema.json",
-  "title": "Output of `run fetch <widget>`, contract 2",
+  "title": "Output of `run fetch <widget>`, contract 3",
   "type": "object",
   "required": ["kind", "data"],
   "additionalProperties": false,

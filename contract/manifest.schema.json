@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "manifest.schema.json",
-  "title": "Source manifest (source.json), contract 2",
+  "title": "Source manifest (source.json), contract 3",
   "type": "object",
   "required": ["contract", "name", "title", "version", "network"],
   "additionalProperties": false,
   "properties": {
     "contract": {
-      "description": "The contract version this source was written against. A hub implementing contract 2 also reads sources written for 1, whose shapes are a subset.",
-      "enum": [1, 2]
+      "description": "The contract version this source was written against. A hub implementing contract 3 also reads sources written for 1 and 2, whose shapes are subsets.",
+      "enum": [1, 2, 3]
     },
     "name": {
       "description": "Unique among sources; used in URLs.",
@@ -48,6 +48,13 @@
             "description": "For a search widget: a query hub check-source runs it with.",
             "type": "string",
             "minLength": 1
+          },
+          "ranges": {
+            "description": "Contract 3. For a timeseries widget: the time ranges the hub offers as buttons, such as 6h or 7d, first one shown first. The hub filters the points it was given; fetch returns the longest range.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^[1-9][0-9]*[hd]$"}
           }
         }
       }
