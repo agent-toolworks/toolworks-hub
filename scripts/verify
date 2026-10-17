@@ -16,6 +16,8 @@
 #   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
 #                    hub open / stop.
 #   7. VERSIONS      the hub and its Claude source agree.
+#   8. GRAFANA       the example source, against a fake Grafana.
+#   9. DOCS          the guide's example source passes check-source as written.
 #
 # Usage: scripts/verify
 set -uo pipefail
@@ -378,6 +380,26 @@ head_ "7. VERSIONS"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
+
+head_ "8. GRAFANA EXAMPLE"
+# examples/grafana against a fake Grafana on 127.0.0.1: no network, no Keychain.
+python3 "$ROOT/fixtures/grafana_cases.py" "$ROOT" "$TMP" > "$TMP/py8.out" 2>&1
+tally < "$TMP/py8.out"
+
+head_ "9. DOCS"
+# The guide's first source, copied out of docs/writing-a-source.md exactly as a
+# reader would, must pass check-source: a guide that drifts from the contract
+# teaches the wrong thing to everyone who follows it.
+mkdir -p "$TMP/guide-disk"
+python3 - "$ROOT/docs/writing-a-source.md" "$TMP/guide-disk" <<'EOF'
+import re, sys
+blocks = re.findall(r"```(\w*)\n(.*?)```", open(sys.argv[1]).read(), re.S)
+open(sys.argv[2] + "/source.json", "w").write(next(b for l, b in blocks if l == "json" and '"name": "disk"' in b))
+open(sys.argv[2] + "/run", "w").write(next(b for l, b in blocks if l == "sh" and b.startswith("#!/bin/sh")))
+EOF
+chmod +x "$TMP/guide-disk/run"
+OUT=$(bounded 30 "$HUB" check-source "$TMP/guide-disk" 2>&1); RC=$?
+expect "the guide's first source passes check-source as written" 0 "PASS  fetch free" "0 failed"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 (( FAIL == 0 ))

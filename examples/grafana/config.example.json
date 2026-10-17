@@ -1,0 +1,7 @@
+{
+  "url": "https://grafana.example.com",
+  "datasource_uid": "PROMETHEUS_UID",
+  "query": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))",
+  "unit": "s",
+  "keychain_service": "toolworks-hub-grafana"
+}

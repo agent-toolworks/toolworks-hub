@@ -1,0 +1,13 @@
+{
+  "contract": 1,
+  "name": "grafana",
+  "title": "Grafana",
+  "version": "0.1.0",
+  "network": true,
+  "refresh_seconds": 120,
+  "timeout_seconds": 15,
+  "widgets": [
+    {"id": "series", "kind": "timeseries", "title": "Last 6 hours"},
+    {"id": "latest", "kind": "stat", "title": "Latest value"}
+  ]
+}

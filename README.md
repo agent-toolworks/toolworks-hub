@@ -9,9 +9,11 @@ It runs as you, with no admin rights, and listens on localhost only. It works
 with any subset of components installed, including none, and reads each tool's
 published contract rather than re-implementing the tool.
 
-**Status:** the source contract (version 1), its checker, and the hub server
-with the built-in Claude Code source are in. token-save and code-search sources
-come next, in their own repositories. The design covers the contract,
+**Status:** the first release's scope is built: the source contract (version
+1) and its checker, the hub server with the built-in Claude Code source,
+session pages, and an example Grafana source. The token-save and code-search
+sources live in those repositories (token-save#43, code-search-fleet PR to
+follow) and appear once their plugins ship them. The design covers the contract,
 component states, discovery, linking between pages, configuration, security
 and the first release:
 [Agent Toolworks Hub — Design](https://claude.ai/code/artifact/cf0466e0-af0d-466c-a082-376bc591deb0).
@@ -41,8 +43,12 @@ facts, token-save's cost over the session, and so on.
 ## Writing a source
 
 A source is a folder with a manifest and a program that prints JSON.
-[docs/contract.md](docs/contract.md) explains it; the schemas in
-[`contract/`](contract) are the contract. Check a source with:
+[docs/writing-a-source.md](docs/writing-a-source.md) builds one in ten lines
+and covers states, errors, secrets, links and shipping one in a plugin;
+[docs/contract.md](docs/contract.md) is the reference, and the schemas in
+[`contract/`](contract) are the contract.
+[`examples/grafana`](examples/grafana) is a complete example that charts a
+Grafana query, keeping its API token in the Keychain. Check a source with:
 
 ```sh
 scripts/hub check-source path/to/my-source --entity session=<a session id>
