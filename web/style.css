@@ -54,6 +54,17 @@ input {
 }
 .top h1 { margin: 0; font-size: 20px; }
 .top #refresh { margin-left: auto; }
+.quota { display: flex; gap: 16px; align-items: center; margin-left: auto; }
+.quota + #refresh { margin-left: 0; }
+.quota-item { display: flex; align-items: center; gap: 6px; color: var(--muted); text-decoration: none; font-size: 13px; }
+.quota-item:hover { color: var(--text); }
+.quota-label { font-weight: 600; }
+.quota-track { width: 120px; height: 8px; border-radius: 999px; background: var(--code-bg); overflow: hidden; }
+.quota-fill { display: block; height: 100%; width: 0; border-radius: 999px; }
+.quota-good { background: var(--good); }
+.quota-warn { background: var(--warn); }
+.quota-bad { background: var(--bad); }
+.quota-value { font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
 main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
 
 .tabs {
@@ -154,6 +165,9 @@ iframe.view {
 
 @media (max-width: 600px) {
   .top, main, .tabs { padding-left: 16px; padding-right: 16px; }
+  .quota { margin-left: 0; width: 100%; order: 3; }
+  .quota-track { width: auto; flex: 1; }
+  .quota-item { flex: 1; }
   .source { padding: 12px 14px; }
   .widgets { grid-template-columns: 1fr; }
 }

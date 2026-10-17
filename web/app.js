@@ -232,11 +232,51 @@ async function status(refresh) {
     document.getElementById('updated').textContent =
       `hub ${st.hub.version} · checked ${new Date().toLocaleTimeString()}`;
     renderProblems(st.problems || []);
+    renderQuota(st);
     return st;
   } catch (err) {
     showBanner(`Could not reach the hub: ${err.message}`);
     return null;
   }
+}
+
+// --- the top bar's quota bars, from token-save ------------------------------
+// token-save's source reads Claude Code's 5-hour and 7-day rate-limit windows
+// (its five-hour and seven-day widgets). Shown whenever token-save is working,
+// whichever tab is open; hidden when it is not installed or not working.
+
+const QUOTAS = [['five-hour', '5h'], ['seven-day', '7d']];
+let quotaTimer = null;
+
+function renderQuota(st) {
+  const box = document.getElementById('quota');
+  const ts = st.sources.find(s => s.name === 'token-save');
+  const ids = ts && (ts.state === 'working' || ts.state === 'stale')
+    ? QUOTAS.filter(([id]) => ts.widgets.some(w => w.id === id)) : [];
+  clearInterval(quotaTimer);
+  box.hidden = !ids.length;
+  if (!ids.length) return;
+  const load = () => Promise.all(ids.map(([id, label]) =>
+    api(`/api/sources/${encodeURIComponent(ts.key)}/widgets/${id}`)
+      .then(p => quotaBar(ts, label, p), err => quotaBar(ts, label, { error: { problem: err.message } }))))
+    .then(bars => box.replaceChildren(...bars));
+  load();
+  quotaTimer = setInterval(() => { if (!document.hidden) load(); }, Math.max(10, ts.refresh_seconds) * 1000);
+}
+
+function quotaBar(ts, label, p) {
+  const d = p.data || {};
+  const pct = typeof d.value === 'number' ? Math.max(0, Math.min(100, d.value)) : null;
+  const level = pct == null ? 'none' : pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'good';
+  const why = p.error ? `could not read: ${p.error.problem}` : d.label || '';
+  const fill = el('span', { cls: `quota-fill quota-${level}` });
+  if (pct != null) fill.style.width = `${pct}%`;
+  return el('a', { cls: 'quota-item', href: sourceHref(ts.key),
+    title: `${label} quota${pct != null ? `: ${pct}% used` : ''}${why ? ` (${why})` : ''}` },
+    el('span', { cls: 'quota-label' }, label),
+    el('span', { cls: 'quota-track', role: 'meter', 'aria-label': `${label} quota`,
+      'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct }, fill),
+    el('span', { cls: 'quota-value' }, pct != null ? `${pct}%` : '—'));
 }
 
 function renderProblems(problems) {
