@@ -12,8 +12,9 @@ published contract rather than re-implementing the tool.
 **Status:** the first release's scope is built: the source contract (version
 1) and its checker, the hub server with the built-in Claude Code source,
 session pages, and an example Grafana source. The token-save and code-search
-sources live in those repositories ([token-save#43](https://github.com/agent-toolworks/token-save/pull/43),
-[code-search-fleet#114](https://github.com/agent-toolworks/code-search-fleet/pull/114)) and appear once their plugins ship them. The design covers the contract,
+sources ship inside those plugins, from token-save 0.26.0 and code-search
+1.29.0 ([token-save#43](https://github.com/agent-toolworks/token-save/pull/43),
+[code-search-fleet#114](https://github.com/agent-toolworks/code-search-fleet/pull/114)). The design covers the contract,
 component states, discovery, linking between pages, configuration, security
 and the first release:
 [Agent Toolworks Hub — Design](https://claude.ai/code/artifact/cf0466e0-af0d-466c-a082-376bc591deb0).
