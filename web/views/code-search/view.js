@@ -103,7 +103,9 @@ function fromLocation() {
 
 // ---- scope and repos -----------------------------------------------------
 async function loadRepos() {
-  const r = await api("repos", { scope: scope() }).catch(() => ({}));
+  const r = await api("repos", { scope: scope() }).catch((e) => ({ error: e.message }));
+  // A failed lookup says why, rather than leaving the menu quietly empty.
+  if (r.error) $("sstatus").textContent = "Repos could not be listed: " + r.error;
   REPOS = r.repos || {};
   const names = Object.keys(REPOS).sort();
   $("repo-names").replaceChildren(...names.map((n) => el("option", { value: n })));
