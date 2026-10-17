@@ -12,9 +12,11 @@ Search widgets are fetched on every query and never cached.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -58,12 +60,56 @@ class Registry:
 
     def status(self) -> dict:
         with self._lock:
+            loaded = [self._sources[k] for k in self._order]
             return {
                 "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION},
-                "sources": [self._sources[k].public() for k in self._order],
+                "sources": [s.public() for s in loaded],
                 "available": list(self._available),
                 "problems": list(self._problems),
+                # A reference is drawn as a link only when something can show it.
+                "linkable": sorted({t for s in loaded if s.state in sources.FETCHABLE
+                                    for t in s.manifest.get("shows", [])}
+                                   & set(contract.entities()["types"])),
             }
+
+    def entity(self, etype: str, eid: str):
+        """(HTTP status, payload) for an entity page: one section from every
+        source that shows this type. A source that knows nothing about the
+        entity (an empty widgets list) is left out; one that fails is kept,
+        with its error, so a missing section is never mistaken for "nothing
+        to say"."""
+        rule = contract.entities()["types"].get(etype)
+        if rule is None:
+            return 404, {"error": f"there is no entity type '{etype}'"}
+        if not re.fullmatch(rule["id_pattern"], eid):
+            return 400, {"error": f"{eid!r} is not a valid {etype} ID"}
+        with self._lock:
+            showers = [self._sources[k] for k in self._order
+                       if self._sources[k].state in sources.FETCHABLE
+                       and etype in self._sources[k].manifest.get("shows", [])]
+        sections = []
+        if showers:
+            with ThreadPoolExecutor(max_workers=min(8, len(showers))) as pool:
+                sections = list(pool.map(lambda s: self._show(s, etype, eid), showers))
+        return 200, {"type": etype, "id": eid, "title": rule["title"],
+                     "sections": [x for x in sections if x.get("widgets") or x.get("error")]}
+
+    @staticmethod
+    def _show(s, etype: str, eid: str) -> dict:
+        section = {"source": s.key, "title": s.title}
+        timeout = s.manifest.get("timeout_seconds", contract.DEFAULT_TIMEOUT)
+        value, problem, stderr = runner.call(s.dir, ["show", etype, eid], timeout)
+        if problem:
+            section["error"] = {"problem": f"show {problem}", "details": sources.stderr_lines(stderr),
+                                "at": _now_iso()}
+            return section
+        errors, _ = contract.show_problems(value)
+        if errors:
+            section["error"] = {"problem": "show printed output that breaks the contract",
+                                "details": errors[:20], "at": _now_iso()}
+            return section
+        section["widgets"] = value["widgets"]
+        return section
 
     def widget(self, key: str, widget_id: str, query=None):
         """(HTTP status, payload) for one widget of one source."""

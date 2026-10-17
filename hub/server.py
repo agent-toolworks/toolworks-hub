@@ -51,6 +51,7 @@ STATIC = {
     "/static/style.css": ("style.css", "text/css; charset=utf-8"),
 }
 WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
+ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
 HEADERS = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -118,6 +119,11 @@ class Handler(BaseHTTPRequestHandler):
             key, widget_id = (urllib.parse.unquote(g) for g in m.groups())
             code, payload = hub.registry.widget(key, widget_id, (query.get("query") or [None])[0])
             return self._json(code, payload)
+        m = ENTITY.match(url.path)
+        if m:
+            etype, eid = (urllib.parse.unquote(g) for g in m.groups())
+            hub.registry.refresh()
+            return self._json(*hub.registry.entity(etype, eid))
         return self._json(404, {"error": "not found"})
 
     def _authorised(self) -> bool:

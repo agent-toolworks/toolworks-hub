@@ -126,3 +126,9 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .source { padding: 12px 14px; }
   .widgets { grid-template-columns: 1fr; }
 }
+
+.entity-head h2 { margin: 4px 0 0; font-size: 20px; }
+.entity-head code { font-size: 15px; }
+a { color: var(--accent); }
+a.ref { text-decoration: none; }
+a.ref:hover { text-decoration: underline; }

@@ -34,6 +34,10 @@ It finds sources in three places: the built-in Claude Code source, a
 [docs/contract.md](docs/contract.md#states), and agent-toolworks plugins you
 have not installed are listed with their install command.
 
+A session in any table links to that session's page, which gathers a section
+from every source that knows about it: the Claude Code source's transcript
+facts, token-save's cost over the session, and so on.
+
 ## Writing a source
 
 A source is a folder with a manifest and a program that prints JSON.

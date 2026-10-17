@@ -224,6 +224,7 @@ want = {
     "from-future": ("user", "incompatible", "written for source contract 2"),
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
+    "bad-show": ("user", "working", ""),
 }
 for key, (origin, state, reason) in want.items():
     s = got.get(key)
@@ -241,6 +242,8 @@ print("ok only fleet-workspace is listed as not installed" if names == ["fleet-w
 a = st["available"][0] if st["available"] else {}
 print("ok it comes with its install command" if a.get("install") == "/plugin install fleet-workspace@agent-toolworks"
       else f"bad install command: {a.get('install')}")
+print("ok session is linkable, because working sources show it" if st.get("linkable") == ["session"]
+      else f"bad linkable: {st.get('linkable')}")
 EOF
 tally < "$TMP/py4.out"
 
@@ -252,6 +255,8 @@ st = json.load(open(sys.argv[1]))
 keys = [(s["key"], s["state"]) for s in st["sources"]]
 print("ok with nothing installed, only the Claude source, not set up" if keys == [("claude", "not_set_up")]
       else f"bad with nothing installed: {keys}")
+print("ok and nothing is linkable, so references stay plain text" if st.get("linkable") == []
+      else f"bad linkable with nothing working: {st.get('linkable')}")
 print("ok and nothing listed as not installed, with no catalogue on disk" if st["available"] == []
       else f"bad available: {st['available']}")
 EOF
@@ -326,6 +331,31 @@ else
     && grep -q '"evidence": "resolved"' "$TMP/body" && ok "a search widget runs the query" || bad "search" "$(head -c 400 "$TMP/body")"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
   [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"
+
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/session/$RECENT") == 200 ]] || bad "entity page: HTTP error" "$(head -c 400 "$TMP/body")"
+  python3 - "$TMP/body" > "$TMP/py6.out" 2>&1 <<'EOF'
+import json, sys
+page = json.load(open(sys.argv[1]))
+secs = {s["source"]: s for s in page["sections"]}
+print("ok the session page has a section from each source that shows sessions"
+      if list(secs) == ["claude", "token-save-fixture", "bad-show"] else f"bad sections: {list(secs)}")
+c = {w["id"]: w for w in secs.get("claude", {}).get("widgets", [])}
+print("ok the Claude section counts the session's messages" if c.get("messages", {}).get("data", {}).get("value") == 2
+      else f"bad Claude section: {secs.get('claude')}")
+b = secs.get("bad-show", {})
+print("ok a source whose show breaks the contract keeps its section, as an error"
+      if "breaks the contract" in b.get("error", {}).get("problem", "") and "widgets" not in b
+      else f"bad bad-show section: {b}")
+EOF
+  tally < "$TMP/py6.out"
+  code -H "Cookie: $JAR" "$BASE/api/entities/session/bbbbbbbb-1111-4222-8333-444444444444" > /dev/null
+  python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); assert "claude" in [s["source"] for s in p["sections"]]' "$TMP/body" \
+    && ok "the older session has a page too" || bad "older session page" "$(head -c 400 "$TMP/body")"
+  code -H "Cookie: $JAR" "$BASE/api/entities/session/dddddddd-1111-4222-8333-444444444444" > /dev/null
+  python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); assert "claude" not in [s["source"] for s in p["sections"]]' "$TMP/body" \
+    && ok "a source that knows nothing about a session leaves its section out" || bad "unknown session" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/session/not-an-id") == 400 ]] && ok "an ID that breaks its type's rule is a 400" || bad "bad entity id"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/ticket/PROJ-1") == 404 ]] && ok "an entity type the contract does not define is a 404" || bad "unknown entity type"
 
   start=$SECONDS
   while kill -0 $SERVER 2>/dev/null && (( SECONDS - start < 15 )); do sleep 0.2; done

@@ -121,9 +121,12 @@ about that entity, and the hub leaves its section out.
 A table cell, a list item's `ref` or a search result's `ref` can link to an
 entity: `{"ref": "session", "id": "…", "label": "optional text"}`. Sources link
 to entities, never to each other's pages. The hub draws a reference as a link
-when an installed source `shows` that type, and as plain text otherwise. A
-click opens the entity's page, built from `run show` on every source that
-shows it.
+when a working source `shows` that type, and as plain text otherwise. A click
+opens the entity's page (`#/entity/session/<id>`), built from `run show` on
+every working source that shows it: one section per source, in discovery
+order. A source that prints an empty `widgets` list is left out; one whose
+`show` fails or breaks the contract keeps its section, showing the error, so a
+missing section never reads as "nothing to say".
 
 [`entities.json`](../contract/entities.json) defines each type and the rule
 its IDs follow. Version 1 defines `session`: the Claude Code session ID, which

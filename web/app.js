@@ -8,6 +8,7 @@ const STATE_LABEL = {
 };
 const SVG = 'http://www.w3.org/2000/svg';
 let timers = [];
+let linkable = new Set();  // entity types some working source can show
 
 function el(tag, attrs, ...kids) {
   const node = document.createElement(tag);
@@ -61,10 +62,17 @@ function fmtNumber(v) {
   return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-function refText(ref) {
-  // Entity pages come in a later release; until then a reference is plain
-  // text, which is also what the contract says when nothing shows its type.
-  return el('span', { cls: 'ref', title: `${ref.ref} ${ref.id}` }, ref.label || ref.id);
+function entityHref(ref) {
+  return `#/entity/${encodeURIComponent(ref.ref)}/${encodeURIComponent(ref.id)}`;
+}
+
+function refText(ref, text) {
+  // A link only when an installed, working source shows this type; otherwise
+  // plain text, as the contract says, never a link that leads nowhere.
+  const label = text || ref.label || ref.id;
+  return linkable.has(ref.ref)
+    ? el('a', { cls: 'ref', href: entityHref(ref), title: `${ref.ref} ${ref.id}` }, label)
+    : el('span', { cls: 'ref', title: `${ref.ref} ${ref.id}` }, label);
 }
 
 function cell(v) {
@@ -96,14 +104,16 @@ const RENDER = {
   list(d) {
     if (!d.items.length) return el('p', { cls: 'muted' }, 'Nothing to show.');
     return el('ul', { cls: 'list' }, d.items.map(i =>
-      el('li', {}, el('span', {}, i.text), i.detail ? el('span', { cls: 'muted' }, i.detail) : null)));
+      el('li', {}, i.ref ? refText(i.ref, i.text) : el('span', {}, i.text),
+        i.detail ? el('span', { cls: 'muted' }, i.detail) : null)));
   },
 
   search(d) {
     if (!d.results.length) return el('p', { cls: 'muted' }, 'No results.');
     return el('ul', { cls: 'results' }, d.results.map(r =>
       el('li', {},
-        el('div', {}, el('strong', {}, r.title), r.evidence ? el('span', { cls: 'badge' }, r.evidence) : null),
+        el('div', {}, el('strong', {}, r.ref ? refText(r.ref, r.title) : r.title),
+          r.evidence ? el('span', { cls: 'badge' }, r.evidence) : null),
         r.location ? el('code', {}, r.location) : null,
         r.detail ? el('p', { cls: 'muted' }, r.detail) : null)));
   },
@@ -211,16 +221,67 @@ function sourceCard(s) {
   return card;
 }
 
+async function status(refresh) {
+  try {
+    const st = await api('/api/status' + (refresh ? '?refresh=1' : ''));
+    linkable = new Set(st.linkable || []);
+    document.getElementById('updated').textContent =
+      `hub ${st.hub.version} · checked ${new Date().toLocaleTimeString()}`;
+    return st;
+  } catch (err) {
+    showBanner(`Could not reach the hub: ${err.message}`);
+    return null;
+  }
+}
+
+function showView(name) {
+  document.getElementById('entity').hidden = name !== 'entity';
+  document.getElementById('sources').hidden = name !== 'home';
+  if (name !== 'home') document.getElementById('available').hidden = true;
+}
+
+async function loadEntity(type, id, refresh) {
+  timers.forEach(clearInterval);
+  timers = [];
+  showView('entity');
+  const view = document.getElementById('entity');
+  view.replaceChildren(el('p', {}, el('a', { href: '#/' }, '← All sources')), el('p', { cls: 'muted' }, 'Loading…'));
+  await status(refresh);
+  let page;
+  try {
+    page = await api(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+  } catch (err) {
+    view.replaceChildren(el('p', {}, el('a', { href: '#/' }, '← All sources')), el('p', { cls: 'error' }, err.message));
+    return;
+  }
+  const head = el('header', { cls: 'entity-head' },
+    el('p', {}, el('a', { href: '#/' }, '← All sources')),
+    el('h2', {}, page.title, ' ', el('code', {}, page.id)));
+  const sections = page.sections.map(sec => {
+    const card = el('section', { cls: 'source' }, el('header', { cls: 'source-head' }, el('h2', {}, sec.title)));
+    if (sec.error) {
+      card.append(el('div', { cls: 'note note-broken' }, el('p', {}, sec.error.problem),
+        sec.error.details && sec.error.details.length ? el('pre', {}, sec.error.details.join('\n')) : null));
+    } else {
+      card.append(el('div', { cls: 'widgets' }, sec.widgets.map(w => {
+        const body = el('div', { cls: 'widget-body' });
+        const meta = el('p', { cls: 'widget-meta muted' });
+        renderPayload(w, body, meta);
+        return el('article', { cls: `widget widget-${w.kind}` }, el('h3', {}, w.title), body, meta);
+      })));
+    }
+    return card;
+  });
+  view.replaceChildren(head, ...(sections.length ? sections
+    : [el('p', { cls: 'muted' }, `No installed source has anything to show for this ${page.type}.`)]));
+}
+
 async function load(refresh) {
   timers.forEach(clearInterval);
   timers = [];
-  let st;
-  try {
-    st = await api('/api/status' + (refresh ? '?refresh=1' : ''));
-  } catch (err) {
-    showBanner(`Could not reach the hub: ${err.message}`);
-    return;
-  }
+  showView('home');
+  const st = await status(refresh);
+  if (!st) return;
   // Working sources first, so the page leads with what has something to show.
   const order = s => (s.state === 'working' || s.state === 'stale' ? 0 : 1);
   const sources = [...st.sources].sort((a, b) => order(a) - order(b));
@@ -231,8 +292,12 @@ async function load(refresh) {
     el('li', {}, el('strong', {}, a.name), a.description ? el('p', { cls: 'muted' }, a.description) : null,
       el('code', {}, a.install))));
   avail.hidden = !st.available.length;
-  document.getElementById('updated').textContent =
-    `hub ${st.hub.version} · checked ${new Date().toLocaleTimeString()}`;
+}
+
+function route(refresh) {
+  const m = location.hash.match(/^#\/entity\/([^/]+)\/([^/]+)$/);
+  if (m) return loadEntity(decodeURIComponent(m[1]), decodeURIComponent(m[2]), refresh);
+  return load(refresh);
 }
 
 function showBanner(text) {
@@ -242,8 +307,9 @@ function showBanner(text) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('refresh').addEventListener('click', () => load(true));
-  load(false);
+  document.getElementById('refresh').addEventListener('click', () => route(true));
+  window.addEventListener('hashchange', () => route(false));
+  route(false);
   // The heartbeat keeps the server from exiting while this page is open.
   setInterval(async () => {
     try { await api('/api/ping'); }
