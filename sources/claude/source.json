@@ -1,0 +1,14 @@
+{
+  "contract": 1,
+  "name": "claude",
+  "title": "Claude Code",
+  "version": "0.1.0",
+  "network": false,
+  "refresh_seconds": 60,
+  "widgets": [
+    {"id": "sessions-today", "kind": "stat", "title": "Active sessions"},
+    {"id": "sessions", "kind": "table", "title": "Recent sessions"},
+    {"id": "plugins", "kind": "table", "title": "Installed plugins"}
+  ],
+  "shows": ["session"]
+}

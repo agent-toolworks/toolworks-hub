@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Build a fake home for scripts/verify: a Claude Code folder, a config folder
+and a cache folder, laid out as on a real machine, holding every case the
+hub's discovery must get right. Nothing here touches the real home.
+
+Usage: fixtures/build-home <dir>
+
+Point the hub at it with CLAUDE_CONFIG_DIR=<dir>/claude,
+XDG_CONFIG_HOME=<dir>/config, XDG_CACHE_HOME=<dir>/cache, HOME=<dir>/home.
+
+What it holds, and what the hub must make of it:
+
+  plugins     token-save 0.6.0, with 0.25.0 also in the cache    stale in the plugins table
+              ... its hub-source: the passes fixture            working
+              code-search, its hub-source not set up            not_set_up
+              agent-teller, with a hub-source that would pass   never listed
+              swift-lsp, no hub-source                          no source
+  catalogue   fleet-workspace, code-search, token-save,
+              agent-teller                                      only fleet-workspace not installed
+  user        a source that prints junk                         broken
+              a source written for contract 2                   incompatible
+              a source calling itself "claude"                  broken: name taken
+  sessions    one active now, one three days ago, a file that
+              is not a transcript, a folder named like one      2 sessions, 1 active today
+"""
+import json
+import os
+import shutil
+import sys
+import time
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SOURCES = os.path.join(HERE, "sources")
+SID_RECENT = "aaaaaaaa-1111-4222-8333-444444444444"
+SID_OLD = "bbbbbbbb-1111-4222-8333-444444444444"
+
+
+def write_json(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        json.dump(value, f, indent=2)
+
+
+def source(template, dest, name):
+    shutil.copytree(os.path.join(SOURCES, template), dest)
+    manifest = os.path.join(dest, "source.json")
+    with open(manifest) as f:
+        m = json.load(f)
+    m["name"] = name
+    write_json(manifest, m)
+
+
+def transcript(path, sid, branch, mtime):
+    records = [
+        {"type": "mode", "mode": "normal", "sessionId": sid},
+        {"type": "user", "cwd": "/work/app", "gitBranch": branch, "version": "2.1.0",
+         "timestamp": "2026-10-17T08:00:00.000Z", "sessionId": sid, "message": {"role": "user", "content": "hi"}},
+        {"type": "assistant", "sessionId": sid, "message": {"role": "assistant", "content": "hello"}},
+    ]
+    with open(path, "w") as f:
+        for r in records:
+            f.write(json.dumps(r) + "\n")
+    os.utime(path, (mtime, mtime))
+
+
+def main(root):
+    claude = os.path.join(root, "claude")
+    plugins = os.path.join(claude, "plugins")
+    cache = os.path.join(plugins, "cache")
+
+    def install(key, version, hub_source=None, also_cached=()):
+        name, market = key.split("@")
+        path = os.path.join(cache, market, name, version)
+        os.makedirs(path)
+        for v in also_cached:
+            os.makedirs(os.path.join(cache, market, name, v))
+        if hub_source:
+            source(hub_source[0], os.path.join(path, "hub-source"), hub_source[1])
+        return key, [{"scope": "user", "installPath": path, "version": version}]
+
+    records = dict([
+        install("token-save@agent-toolworks", "0.6.0", ("passes", "token-save-fixture"), also_cached=("0.25.0",)),
+        install("code-search@agent-toolworks", "1.23.0", ("not-set-up", "code-search-fixture")),
+        install("agent-teller@agent-teller", "0.25.0", ("passes", "teller-fixture")),
+        install("swift-lsp@claude-plugins-official", "1.0.0"),
+    ])
+    write_json(os.path.join(plugins, "installed_plugins.json"), {"version": 2, "plugins": records})
+
+    market = os.path.join(plugins, "marketplaces", "agent-toolworks")
+    write_json(os.path.join(market, ".claude-plugin", "marketplace.json"), {
+        "name": "agent-toolworks",
+        "plugins": [{"name": n, "description": f"The {n} fixture.", "homepage": f"https://example.com/{n}"}
+                    for n in ("fleet-workspace", "code-search", "token-save", "agent-teller")],
+    })
+    write_json(os.path.join(plugins, "known_marketplaces.json"),
+               {"agent-toolworks": {"installLocation": market}})
+
+    projects = os.path.join(claude, "projects", "-work-app")
+    os.makedirs(os.path.join(projects, SID_RECENT))  # Claude Code keeps a folder per session too
+    now = time.time()
+    transcript(os.path.join(projects, f"{SID_RECENT}.jsonl"), SID_RECENT, "main", now)
+    transcript(os.path.join(projects, f"{SID_OLD}.jsonl"), SID_OLD, "fix", now - 3 * 24 * 3600)
+    with open(os.path.join(projects, "notes.jsonl"), "w") as f:
+        f.write("{}\n")
+
+    user = os.path.join(root, "config", "agent-toolworks", "sources")
+    os.makedirs(user)
+    source("not-json", os.path.join(user, "user-broken"), "user-broken")
+    source("newer-contract", os.path.join(user, "from-future"), "from-future")
+    source("passes", os.path.join(user, "imposter"), "claude")
+
+    os.makedirs(os.path.join(root, "home"))
+    os.makedirs(os.path.join(root, "cache"))
+
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        sys.exit("usage: fixtures/build-home <dir>")
+    main(sys.argv[1])

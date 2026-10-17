@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # hub — the toolworks-hub command line.
 #
+#   open          start the server if needed and open the hub in a browser
+#   status        every source the hub finds, and its state
 #   check-source  check a source folder against the source contract
+#   serve, stop   run the server in the foreground; stop a running one
 #
 # python3 is the one requirement; the hub installs nothing.
 set -euo pipefail
@@ -20,12 +23,23 @@ usage() {
 hub — toolworks-hub
 
 USAGE
+  hub open [--no-browser]
+  hub status [--json]
   hub check-source <folder> [--entity TYPE=ID ...]
+  hub serve [--port N] [--no-idle-exit]
+  hub stop
 
 COMMANDS
+  open          start the server if it is not running, and open the hub in
+                a browser. The server listens on 127.0.0.1 only and exits
+                after 10 minutes with no page open.
+  status        every source the hub finds and its state, without starting
+                the server. --json prints what the page is built from.
   check-source  check a source folder against the source contract
                 (docs/contract.md). Exit 0 when nothing failed, 1 when
                 something did, 2 for bad usage.
+  serve         run the server in the foreground (for development).
+  stop          stop the running server.
 EOF
 }
 
@@ -33,6 +47,8 @@ command -v python3 >/dev/null 2>&1 || die "hub: python3 is required and was not 
 
 case "${1:-}" in
   check-source) shift; exec python3 "$ROOT/hub/check_source.py" "$@" ;;
+  status)       shift; exec python3 "$ROOT/hub/status.py" "$@" ;;
+  open|serve|stop) exec python3 "$ROOT/hub/server.py" "$@" ;;
   ""|-h|--help|help) usage ;;
   *) usage >&2; die "hub: unknown command '$1'" ;;
 esac

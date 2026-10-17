@@ -105,6 +105,68 @@ def validate(instance, schema_name: str) -> list:
     return errors
 
 
+def data_problems(kind: str, data, path: str) -> tuple:
+    """What the schemas cannot say, for data that already meets them: table
+    rows keyed by real columns, and refs whose entity type is known and whose
+    ID fits its rule. Returns (errors, warnings)."""
+    errors, warnings = [], []
+    refs = []
+    if kind == "table":
+        cols = [c["id"] for c in data["columns"]]
+        for dup in sorted({c for c in cols if cols.count(c) > 1}):
+            errors.append(f"{path}.columns: id '{dup}' is used more than once")
+        for i, row in enumerate(data["rows"]):
+            for key, cell in row.items():
+                if key not in cols:
+                    errors.append(f"{path}.rows[{i}]: '{key}' is not one of the columns")
+                if isinstance(cell, dict):
+                    refs.append((f"{path}.rows[{i}].{key}", cell))
+    elif kind in ("list", "search"):
+        field = "items" if kind == "list" else "results"
+        for i, item in enumerate(data[field]):
+            if "ref" in item:
+                refs.append((f"{path}.{field}[{i}].ref", item["ref"]))
+
+    types = entities()["types"]
+    for where, ref in refs:
+        t = types.get(ref["ref"])
+        if t is None:
+            warnings.append(f"{where}: entity type '{ref['ref']}' is not in contract/entities.json, "
+                            f"so the hub shows it as plain text")
+        elif not re.fullmatch(t["id_pattern"], ref["id"]):
+            errors.append(f"{where}: {ref['id']!r} is not a valid {ref['ref']} ID")
+    return errors, warnings
+
+
+def fetch_problems(value, kind: str) -> tuple:
+    """Everything wrong with one `run fetch` output for a widget of this kind.
+    Returns (errors, warnings)."""
+    if isinstance(value, dict) and value.get("kind", kind) != kind:
+        # Reported alone: the data was checked against the printed kind, so
+        # its errors would describe the wrong shape.
+        return [f"$.kind: the manifest says '{kind}', fetch printed {value['kind']!r}"], []
+    errors = validate(value, "fetch.schema.json")
+    if errors:
+        return errors, []
+    return data_problems(value["kind"], value["data"], "$.data")
+
+
+def show_problems(value) -> tuple:
+    """Everything wrong with one `run show` output. Returns (errors, warnings)."""
+    errors = validate(value, "show.schema.json")
+    if errors:
+        return errors, []
+    warnings = []
+    ids = [w["id"] for w in value["widgets"]]
+    for dup in sorted({i for i in ids if ids.count(i) > 1}):
+        errors.append(f"$.widgets: id '{dup}' is used more than once")
+    for i, w in enumerate(value["widgets"]):
+        e, wn = data_problems(w["kind"], w["data"], f"$.widgets[{i}].data")
+        errors += e
+        warnings += wn
+    return errors, warnings
+
+
 def _resolve(ref: str, base: str):
     file, _, pointer = ref.partition("#")
     file = file or base

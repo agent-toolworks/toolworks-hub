@@ -9,6 +9,13 @@
 #   3. CHECK-SOURCE  each fixture in fixtures/sources passes or fails for the
 #                    reason it was built with, and a hung source is stopped
 #                    along with what it started.
+#   4. DISCOVERY     against a fake home (fixtures/build-home): every state,
+#                    name collisions, agent-teller never loaded or listed.
+#   5. CLAUDE SOURCE the built-in source meets the contract and reads the
+#                    fake home's sessions and plugins correctly.
+#   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
+#                    hub open / stop.
+#   7. VERSIONS      the hub and its Claude source agree.
 #
 # Usage: scripts/verify
 set -uo pipefail
@@ -193,6 +200,154 @@ if [[ -s $TMP/hang.pid ]] && ! kill -0 "$(cat "$TMP/hang.pid")" 2>/dev/null; the
 else
   bad "hangs: its background child is still running, or never started"
 fi
+
+# Sections 4 to 6 run against a fake home (fixtures/build-home), never the
+# real one: a verify run must not read or touch the operator's Claude Code.
+HOME_FIX="$TMP/home"
+"$ROOT/fixtures/build-home" "$HOME_FIX"
+in_home() {
+  CLAUDE_CONFIG_DIR="$HOME_FIX/claude" XDG_CONFIG_HOME="$HOME_FIX/config" \
+  XDG_CACHE_HOME="$HOME_FIX/cache" HOME="$HOME_FIX/home" "$@"
+}
+RECENT=aaaaaaaa-1111-4222-8333-444444444444
+
+head_ "4. DISCOVERY"
+in_home bounded 30 "$HUB" status --json > "$TMP/status.json" 2>&1 || bad "hub status --json failed" "$(cat "$TMP/status.json")"
+python3 - "$TMP/status.json" > "$TMP/py4.out" 2>&1 <<'EOF'
+import json, sys
+st = json.load(open(sys.argv[1]))
+got = {s["key"]: s for s in st["sources"]}
+want = {
+    "claude": ("built-in", "working", ""),
+    "token-save-fixture": ("plugin", "working", ""),
+    "code-search-fixture": ("plugin", "not_set_up", "no history database"),
+    "from-future": ("user", "incompatible", "written for source contract 2"),
+    "claude~2": ("user", "broken", "already used by the built-in source"),
+    "user-broken": ("user", "broken", "did not print valid JSON"),
+}
+for key, (origin, state, reason) in want.items():
+    s = got.get(key)
+    if s and s["origin"] == origin and s["state"] == state and reason in s["reason"]:
+        print(f"ok {key}: {origin}, {state}")
+    else:
+        print(f"bad {key}: wanted {origin}/{state}/{reason!r}, got {s and (s['origin'], s['state'], s['reason'])}")
+extra = set(got) - set(want)
+print(f"bad unexpected sources: {sorted(extra)}" if extra else "ok no other sources, so agent-teller's hub-source was never loaded")
+print("ok claude is found first, so it keeps its name" if st["sources"][0]["key"] == "claude"
+      else f"bad first source is {st['sources'][0]['key']}")
+names = [a["name"] for a in st["available"]]
+print("ok only fleet-workspace is listed as not installed" if names == ["fleet-workspace"]
+      else f"bad not installed: {names}")
+a = st["available"][0] if st["available"] else {}
+print("ok it comes with its install command" if a.get("install") == "/plugin install fleet-workspace@agent-toolworks"
+      else f"bad install command: {a.get('install')}")
+EOF
+tally < "$TMP/py4.out"
+
+CLAUDE_CONFIG_DIR="$TMP/nowhere" XDG_CONFIG_HOME="$TMP/nowhere" XDG_CACHE_HOME="$TMP/nowhere-cache" \
+  HOME="$HOME_FIX/home" bounded 30 "$HUB" status --json > "$TMP/empty.json" 2>&1
+python3 - "$TMP/empty.json" > "$TMP/py4b.out" 2>&1 <<'EOF'
+import json, sys
+st = json.load(open(sys.argv[1]))
+keys = [(s["key"], s["state"]) for s in st["sources"]]
+print("ok with nothing installed, only the Claude source, not set up" if keys == [("claude", "not_set_up")]
+      else f"bad with nothing installed: {keys}")
+print("ok and nothing listed as not installed, with no catalogue on disk" if st["available"] == []
+      else f"bad available: {st['available']}")
+EOF
+tally < "$TMP/py4b.out"
+
+head_ "5. CLAUDE SOURCE"
+OUT=$(in_home bounded 30 "$HUB" check-source "$ROOT/sources/claude" --entity session=$RECENT 2>&1); RC=$?
+expect "it meets the contract, show included" 0 "PASS  fetch sessions" "PASS  fetch plugins" "PASS  show session $RECENT"
+for w in sessions-today sessions plugins; do
+  in_home "$ROOT/sources/claude/run" fetch $w > "$TMP/claude-$w.json" 2>&1
+done
+in_home "$ROOT/sources/claude/run" show session $RECENT > "$TMP/claude-show.json" 2>&1
+python3 - "$TMP" > "$TMP/py5.out" 2>&1 <<'EOF'
+import json, os, sys
+t = sys.argv[1]
+load = lambda n: json.load(open(os.path.join(t, n)))
+v = load("claude-sessions-today.json")["data"]["value"]
+print("ok one session active in the last 24 hours" if v == 1 else f"bad sessions today: {v}")
+rows = load("claude-sessions.json")["data"]["rows"]
+ids = [r["session"]["id"] for r in rows]
+print("ok two sessions, newest first; the stray file and the session folder are not transcripts"
+      if ids == ["aaaaaaaa-1111-4222-8333-444444444444", "bbbbbbbb-1111-4222-8333-444444444444"] else f"bad sessions: {ids}")
+print("ok the project and branch come from the transcript" if rows and rows[0]["project"] == "/work/app" and rows[0]["branch"] == "main"
+      else f"bad first row: {rows[:1]}")
+plugins = {r["plugin"]: r for r in load("claude-plugins.json")["data"]["rows"]}
+ts = plugins.get("token-save", {})
+print("ok token-save 0.6.0 is stale, with 0.25.0 in the cache" if ts.get("status", "").startswith("stale: 0.25.0")
+      else f"bad token-save row: {ts}")
+print("ok agent-teller is not listed" if "agent-teller" not in plugins else "bad agent-teller is listed")
+w = {x["id"]: x for x in load("claude-show.json")["widgets"]}
+print("ok show counts the session's messages" if w.get("messages", {}).get("data", {}).get("value") == 2
+      else f"bad show: {w}")
+EOF
+tally < "$TMP/py5.out"
+
+head_ "6. SERVER"
+INFO="$HOME_FIX/cache/agent-toolworks/server.json"
+in_home env HUB_IDLE_SECONDS=4 python3 "$ROOT/hub/server.py" serve > "$TMP/serve.log" 2>&1 &
+SERVER=$!
+for _ in $(seq 50); do [[ -s $INFO ]] && break; sleep 0.1; done
+if [[ ! -s $INFO ]]; then
+  bad "the server did not write server.json" "$(cat "$TMP/serve.log")"
+else
+  PORT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["port"])' "$INFO")
+  TOKEN=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["token"])' "$INFO")
+  BASE="http://127.0.0.1:$PORT"
+  JAR="hub_token_$PORT=$TOKEN"
+  code() { curl -s --noproxy '*' -o "$TMP/body" -w '%{http_code}' "$@"; }
+  [[ $(stat -f %Lp "$INFO" 2>/dev/null || stat -c %a "$INFO") == 600 ]] && ok "server.json is readable by its owner only" || bad "server.json mode"
+  [[ $(code "$BASE/api/status") == 403 ]] && ok "no token: refused" || bad "no token was not refused"
+  [[ $(code -H "Cookie: hub_token_$PORT=wrong" "$BASE/api/status") == 403 ]] && ok "wrong token: refused" || bad "wrong token was not refused"
+  [[ $(code -H "Cookie: $JAR" -H "Host: evil.example:$PORT" "$BASE/api/status") == 403 ]] \
+    && ok "right token, foreign Host header (DNS rebinding): refused" || bad "foreign Host was not refused"
+  curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null "$BASE/?token=$TOKEN"
+  grep -qi "^set-cookie: hub_token_$PORT=$TOKEN; Path=/; HttpOnly; SameSite=Strict" "$TMP/headers" \
+    && grep -qi '^location: /' "$TMP/headers" \
+    && ok "the token URL sets an HttpOnly, SameSite=Strict cookie and redirects to drop it" \
+    || bad "token URL response" "$(cat "$TMP/headers")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/") == 200 ]] && grep -q "Toolworks Hub" "$TMP/body" && ok "with the cookie, the page loads" || bad "page did not load"
+  curl -s --noproxy '*' -D "$TMP/headers" -o /dev/null -H "Cookie: $JAR" "$BASE/api/status"
+  grep -qi "^content-security-policy: default-src 'self'" "$TMP/headers" && ok "responses carry a Content-Security-Policy" || bad "no CSP"
+  grep -qi '^access-control-allow-origin' "$TMP/headers" && bad "a CORS header is sent" || ok "no CORS headers, so no other origin can read a response"
+  code -H "Cookie: $JAR" "$BASE/api/status" > /dev/null
+  python3 -c 'import json,sys; st=json.load(open(sys.argv[1])); assert [s["key"] for s in st["sources"]][0] == "claude"' "$TMP/body" \
+    && ok "/api/status lists the sources" || bad "/api/status" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/claude/widgets/sessions-today") == 200 ]] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["data"]["value"] == 1 and "fetched_at" in d' "$TMP/body" \
+    && ok "a widget is fetched through the server" || bad "widget fetch" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/code-search-fixture/widgets/count") == 409 ]] \
+    && ok "a source that is not set up is never fetched" || bad "not-set-up source was fetched"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/widgets/find?query=history") == 200 ]] \
+    && grep -q '"evidence": "resolved"' "$TMP/body" && ok "a search widget runs the query" || bad "search" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
+  [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"
+
+  start=$SECONDS
+  while kill -0 $SERVER 2>/dev/null && (( SECONDS - start < 15 )); do sleep 0.2; done
+  if kill -0 $SERVER 2>/dev/null; then bad "the server did not exit when idle"; kill $SERVER
+  else ok "the server exits on its own when idle"; fi
+  [[ ! -e $INFO ]] && ok "and removes server.json when it does" || bad "server.json was left behind"
+fi
+
+OUT=$(in_home bounded 30 "$HUB" open --no-browser 2>&1); RC=$?
+URL1=$OUT
+expect "hub open starts a server and prints its URL" 0 "http://127.0.0.1:"
+OUT=$(in_home bounded 30 "$HUB" open --no-browser 2>&1); RC=$?
+[[ $RC == 0 && $OUT == "$URL1" ]] && ok "a second hub open reuses the running server" || bad "second hub open" "$URL1 / $OUT"
+OUT=$(in_home bounded 30 "$HUB" stop 2>&1); RC=$?
+expect "hub stop stops it" 0 "hub: stopped"
+OUT=$(in_home bounded 30 "$HUB" stop 2>&1); RC=$?
+expect "hub stop with nothing running says so" 0 "hub: not running"
+
+head_ "7. VERSIONS"
+HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
+SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
+[[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 (( FAIL == 0 ))
