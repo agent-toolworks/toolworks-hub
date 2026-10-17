@@ -85,6 +85,15 @@ main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
   border-bottom: 2px solid transparent; margin-bottom: -1px;
 }
 .tab:hover { color: var(--text); }
+.tab-item { display: flex; align-items: center; flex: none; }
+.popout {
+  display: flex; padding: 4px; margin-left: -8px; border-radius: 4px; color: var(--muted);
+  visibility: hidden;
+}
+.popout svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.tab-item:hover .popout, .popout:focus-visible, .tab[aria-current] + .popout { visibility: visible; }
+.popout:hover { color: var(--accent); }
+@media (hover: none) { .popout { visibility: visible; } }
 .tab[aria-current] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
 .dot.state-working { background: var(--good); }
@@ -158,6 +167,14 @@ iframe.view {
   display: block; width: 100%; height: calc(100vh - 210px); min-height: 480px; margin-top: 16px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
 }
+/* A tab on its own page (#/.../full): the tab alone, filling the window. */
+body.full .top, body.full .tabs, body.full #problems { display: none; }
+body.full main { max-width: none; padding: 0; }
+body.full #panel > .source {
+  margin: 0; border: none; border-radius: 0; min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+body.full iframe.view { flex: 1; height: auto; min-height: 0; }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--line); }
 .chart .tick { fill: var(--muted); font-size: 11px; }

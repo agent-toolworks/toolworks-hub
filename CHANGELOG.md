@@ -15,6 +15,11 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **New: a tab on its own page.** A tab's URL plus `/full`, such as
+  `#/source/code-search/full`, shows that tab alone, filling the window, with
+  no top bar or tab strip; a view fills the whole height. A pop-out icon beside
+  each tab opens it that way in a new browser tab.
+
 ## 0.3.1 — 2026-10-17
 
 - **Fix: a view can ship its fonts.** The contract tells a view to bundle its

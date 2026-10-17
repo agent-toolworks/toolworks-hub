@@ -386,8 +386,21 @@ function renderProblems(problems) {
 // --- tabs: one per source, then what is not installed ------------------------
 
 const NOT_INSTALLED = '#/not-installed';
+const FULL = '/full';  // a tab's hash plus this shows the tab alone, filling the window
 const sourceHref = key => `#/source/${encodeURIComponent(key)}`;
 const pageHref = name => `#/page/${encodeURIComponent(name)}`;
+
+function splitFull(hash) {
+  return hash && hash.endsWith(FULL) ? { tab: hash.slice(0, -FULL.length), full: true } : { tab: hash, full: false };
+}
+
+// The pop-out icon beside a tab: the tab on a page of its own, in a new browser tab.
+function popout(href, label) {
+  const icon = svg('svg', { viewBox: '0 0 24 24', width: 14, height: 14, 'aria-hidden': 'true' },
+    svg('path', { d: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5' }));
+  return el('a', { cls: 'popout', href: href + FULL, target: '_blank', rel: 'noopener',
+    title: `Open ${label} in a new tab`, 'aria-label': `Open ${label} in a new tab` }, icon);
+}
 
 function remember(hash) {
   try { localStorage.setItem('hub.tab', hash); } catch { /* no storage: start at the first tab */ }
@@ -404,10 +417,10 @@ function orderedSources(st) {
 }
 
 function renderTabs(st, current) {
-  const tab = (href, label, state) => el('a', {
+  const tab = (href, label, state) => el('span', { cls: 'tab-item' }, el('a', {
     cls: 'tab', href, 'aria-current': href === current ? 'page' : null,
     title: state ? STATE_LABEL[state] || state : null,
-  }, state ? el('span', { cls: `dot state-${state}`, 'aria-hidden': 'true' }) : null, label);
+  }, state ? el('span', { cls: `dot state-${state}`, 'aria-hidden': 'true' }) : null, label), popout(href, label));
   const tabs = orderedSources(st).map(s => tab(sourceHref(s.key), s.title, s.state));
   for (const p of st.pages || []) tabs.push(tab(pageHref(p.name), p.title));
   if (st.available.length) tabs.push(tab(NOT_INSTALLED, `Not installed (${st.available.length})`));
@@ -428,6 +441,8 @@ function stopTimers() {
 
 async function loadEntity(type, id, refresh) {
   stopTimers();
+  document.body.classList.remove('full');
+  document.title = 'Toolworks Hub';
   showView('entity');
   const view = document.getElementById('entity');
   const back = () => el('p', {}, el('a', { href: remembered() || '#/' }, '← Back'));
@@ -471,12 +486,19 @@ async function loadTab(wanted, refresh) {
   const linkPages = st.pages || [];
   const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0
     : sources.some(s => sourceHref(s.key) === h) || linkPages.some(p => pageHref(p.name) === h));
+  // A tab on its own page is not remembered: the hub's own page keeps its tab.
+  const { tab, full } = splitFull(wanted);
   // An unknown or stale tab (a source that went away) falls back to the first.
-  const hash = [wanted, remembered()].find(valid)
+  const hash = [tab, remembered()].find(valid)
     || (sources.length ? sourceHref(sources[0].key) : NOT_INSTALLED);
-  if (hash !== location.hash) history.replaceState(null, '', hash);
-  remember(hash);
+  const shown = full ? hash + FULL : hash;
+  if (shown !== location.hash) history.replaceState(null, '', shown);
+  if (!full) remember(hash);
+  document.body.classList.toggle('full', full);
   renderTabs(st, hash);
+  const title = hash === NOT_INSTALLED ? 'Not installed'
+    : (linkPages.find(p => pageHref(p.name) === hash) || sources.find(s => sourceHref(s.key) === hash) || {}).title;
+  document.title = full && title ? `${title} · Toolworks Hub` : 'Toolworks Hub';
 
   const panel = document.getElementById('panel');
   if (hash === NOT_INSTALLED) {

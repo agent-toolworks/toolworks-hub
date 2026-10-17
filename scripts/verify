@@ -576,6 +576,15 @@ console.log(got === [6 * 3600e3, 12 * 3600e3, 3 * 86400e3, 30 * 86400e3, "", ""]
   : "bad rangeMs: " + got);
 EOF
   tally < "$TMP/node7c.out"
+  node - "$ROOT/web/app.js" > "$TMP/node7d.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const grab = name => (src.match(new RegExp("^(const " + name + " = .*|function " + name + "\\([\\s\\S]*?^})", "m")) || [""])[0];
+const splitFull = new Function([grab("FULL"), grab("splitFull")].join("\n") + "\nreturn splitFull;")();
+const got = ["#/source/code-search/full", "#/source/code-search", "#/not-installed/full", ""].map(h => JSON.stringify(splitFull(h))).join(" ");
+console.log(got === '{"tab":"#/source/code-search","full":true} {"tab":"#/source/code-search","full":false} {"tab":"#/not-installed","full":true} {"tab":"","full":false}'
+  ? "ok a tab's hash plus /full is that tab on its own page" : "bad splitFull: " + got);
+EOF
+  tally < "$TMP/node7d.out"
 else
   printf '  SKIP  the code-search view grouping: node is not installed\n'
 fi
