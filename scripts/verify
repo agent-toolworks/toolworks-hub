@@ -433,6 +433,9 @@ else
     else bad "own page $f" "$(cat "$TMP/headers")"; fi
   done
   grep -qi '^content-type: image/svg+xml' "$TMP/headers" && ok "an image in a page is served with its type" || bad "own page svg type" "$(cat "$TMP/headers")"
+  curl -s --noproxy '*' -D "$TMP/headers" -o "$TMP/body" -H "Cookie: $JAR" "$BASE/sources/own-page/page/fonts/Face.woff2"
+  head -1 "$TMP/headers" | grep -q ' 200' && grep -qi '^content-type: font/woff2' "$TMP/headers" \
+    && ok "a font in a page is served with its type" || bad "own page font" "$(cat "$TMP/headers")"
   [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/notes.txt") == 404 ]] && ok "a page file of another type is not served" || bad "own page txt"
   [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/.secret.js") == 404 ]] && ok "a hidden page file is not served" || bad "own page hidden file"
   [[ $(code -H "Cookie: $JAR" "$BASE/sources/own-page/page/..%2Fsource.json") == 404 \

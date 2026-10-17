@@ -139,7 +139,7 @@ A view comes from one of two places, and the first one found wins:
 Either way, files may sit in folders below the view's, and are served when
 their names hold only letters, digits, `_`, `.` and `-` and do not start with
 a dot, and they end in `.html`, `.js`, `.css`, `.json`, `.svg`, `.png`,
-`.jpg`, `.jpeg`, `.gif` or `.webp`. Anything else is a 404, and so is a link
+`.jpg`, `.jpeg`, `.gif`, `.webp`, `.woff2` or `.woff`. Anything else is a 404, and so is a link
 that leads out of the folder. Views are served with `X-Frame-Options:
 SAMEORIGIN` and a Content-Security-Policy of `default-src 'self'`, so a view
 loads nothing from the network: bundle its scripts, styles and fonts, and

@@ -68,7 +68,8 @@ VIEW_PATH = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*(/[A-Za-z0-9_][A-Za-z0-9_.-
 VIEW_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charset=utf-8",
               "css": "text/css; charset=utf-8", "json": "application/json",
               "svg": "image/svg+xml", "png": "image/png", "jpg": "image/jpeg",
-              "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp"}
+              "jpeg": "image/jpeg", "gif": "image/gif", "webp": "image/webp",
+              "woff2": "font/woff2", "woff": "font/woff"}
 WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
 CALL = re.compile(r"^/api/sources/([^/]+)/call/([^/]+)$")
 ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
