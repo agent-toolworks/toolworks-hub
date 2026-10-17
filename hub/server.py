@@ -264,7 +264,7 @@ def ping(info: dict) -> bool:
 def serve(port=None, idle: bool = True) -> int:
     if port is None:
         port, _ = discovery.port_setting()
-    registry = Registry()
+    registry = Registry(check_updates=True)
     try:
         hub = Hub(port, registry)
     except OSError as e:

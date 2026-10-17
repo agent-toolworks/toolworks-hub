@@ -558,6 +558,44 @@ else
 fi
 
 head_ "8. VERSIONS"
+# The update check, against a local repo standing in for origin: no network.
+REL="$TMP/releases"
+git init -q "$REL" && git -C "$REL" -c user.email=v@x -c user.name=v commit -q --allow-empty -m r
+for t in v0.1.0 v0.2.0 v0.10.0 v9.1.0 vnext; do git -C "$REL" tag "$t"; done
+git init -q "$TMP/older" && git -C "$TMP/older" -c user.email=v@x -c user.name=v commit -q --allow-empty -m r
+git -C "$TMP/older" tag v0.0.1
+python3 - "$ROOT/hub" "$REL" "$TMP/older" "$TMP/updcfg" > "$TMP/py8u.out" 2>&1 <<'EOF'
+import json, os, sys, time
+sys.path.insert(0, sys.argv[1])
+os.environ["XDG_CONFIG_HOME"] = sys.argv[4]
+import paths, updates
+from version import VERSION
+print("ok the newest release is the highest vX.Y.Z tag, compared as numbers (0.10 after 0.2)"
+      if updates.latest_tag(sys.argv[2]) == "9.1.0" else f"bad latest: {updates.latest_tag(sys.argv[2])}")
+print("ok a remote that cannot be read is no answer, not an error"
+      if updates.latest_tag(os.path.join(sys.argv[2], "nope")) is None else "bad unreadable remote")
+def checked(remote):
+    os.environ["HUB_UPDATE_REMOTE"] = remote
+    c = updates.Checker()
+    c.poke()
+    for _ in range(100):
+        if c.status()["latest"] or not c._running:
+            break
+        time.sleep(0.05)
+    return c.status()
+st = checked(sys.argv[2])
+print("ok a newer release shows as an update, linked to its release page"
+      if st["update"] and st["latest"] == "9.1.0" and st["url"].endswith("/releases/tag/v9.1.0") else f"bad newer: {st}")
+st = checked(sys.argv[3])
+print(f"ok an older release than {VERSION} is no update" if not st["update"] and st["url"] is None else f"bad older: {st}")
+os.makedirs(os.path.dirname(paths.hub_config_path()), exist_ok=True)
+json.dump({"check_updates": False}, open(paths.hub_config_path(), "w"))
+c = updates.Checker()
+c.poke()
+print("ok check_updates false makes no check at all" if not c._running and c.status()["latest"] is None
+      else f"bad check_updates false: {c.status()}")
+EOF
+tally < "$TMP/py8u.out"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
