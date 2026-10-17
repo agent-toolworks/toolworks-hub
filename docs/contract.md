@@ -1,4 +1,4 @@
-# The source contract, version 1
+# The source contract, version 2
 
 A source is a folder the hub can show: a manifest saying what it offers and a
 program that prints JSON. The hub's own sources and the ones you write follow
@@ -48,7 +48,7 @@ of the hub carries on.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `contract` | yes | `1`, the contract version the source was written for. Any other value makes the source *incompatible*. |
+| `contract` | yes | `2` (or `1`), the contract version the source was written for. Any other value makes the source *incompatible*. |
 | `name` | yes | Unique among sources: lowercase letters, digits and dashes. Used in URLs. |
 | `title` | yes | Shown as the source's heading. |
 | `version` | yes | The source's own version. |
@@ -139,6 +139,8 @@ printed `kind` must match the manifest's. Times are ISO 8601 with an offset:
 ```json
 {"kind": "stat", "data": {"value": 4, "unit": "sessions", "label": "since midnight"}}
 
+{"kind": "stat", "data": {"value": 93, "unit": "%", "label": "used", "resets_at": "2026-10-18T12:40:00+03:00"}}
+
 {"kind": "timeseries", "data": {"unit": "USD", "series": [
   {"name": "cost", "points": [{"t": "2026-10-16T00:00:00Z", "v": 1.5}, {"t": "2026-10-17T00:00:00Z", "v": null}]}]}}
 
@@ -151,6 +153,10 @@ printed `kind` must match the manifest's. Times are ISO 8601 with an offset:
 {"kind": "search", "notice": "PARTIAL: one engine timed out", "data": {"results": [
   {"title": "history.py", "location": "scripts/lib/history.py:12", "evidence": "resolved"}]}}
 ```
+
+A stat's `resets_at` (contract 2) says when a quota or window resets; the hub
+shows the time left and counts down to it. Put the human wording in `label` as
+well if you like, but the hub reads the time only from `resets_at`.
 
 A table cell is a string, number, boolean, null or reference, and every key in
 a row must be a column id. A search result's `evidence` says how the source
@@ -183,8 +189,19 @@ an ID that breaks its type's rule is an error.
 
 - **`contract`** goes up with any change to a schema. Schemas refuse unknown
   fields in both directions, so even an added optional field would break an
-  older hub or an older source. The hub shows a source written for a contract
-  it does not implement as *incompatible*.
+  older hub. The hub shows a source written for a contract it does not read as
+  *incompatible*.
+- **A hub reads older contracts too**, when a version only adds fields: this
+  hub implements 2 and reads 1, so a source never has to move just because the
+  hub did. A source moves to a new version when it prints a field that version
+  added, and must then declare it; `check-source` fails a source that prints
+  `resets_at` while declaring contract 1, because a contract-1 hub would
+  refuse it.
+
+| Version | Adds |
+| --- | --- |
+| 1 | the first contract |
+| 2 | a stat's `resets_at` |
 - **`entities.json` `version`** goes up when a type is added. An existing
   type's ID rule never changes; that would be a contract change.
 

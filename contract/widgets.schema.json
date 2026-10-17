@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "widgets.schema.json",
-  "title": "Widget data shapes, contract 1",
+  "title": "Widget data shapes, contract 2",
   "description": "The shapes a source's fetch and show output may take. Referenced by fetch.schema.json, show.schema.json and manifest.schema.json.",
   "$defs": {
     "slug": {
@@ -42,7 +42,11 @@
       "properties": {
         "value": {"type": ["number", "string"]},
         "unit": {"type": "string", "minLength": 1},
-        "label": {"type": "string", "minLength": 1}
+        "label": {"type": "string", "minLength": 1},
+        "resets_at": {
+          "description": "Contract 2. When the value resets, for a quota or a window: the hub counts down to it.",
+          "$ref": "#/$defs/timestamp"
+        }
       }
     },
     "timeseries": {

@@ -116,7 +116,7 @@ class Registry:
             section["error"] = {"problem": f"show {problem}", "details": sources.stderr_lines(stderr),
                                 "at": _now_iso()}
             return section
-        errors, _ = contract.show_problems(value)
+        errors, _ = contract.show_problems(value, s.manifest["contract"])
         if errors:
             section["error"] = {"problem": "show printed output that breaks the contract",
                                 "details": errors[:20], "at": _now_iso()}
@@ -200,7 +200,7 @@ class Registry:
         if problem:
             return {"error": {"problem": f"fetch {problem}", "details": sources.stderr_lines(stderr),
                               "at": _now_iso()}}
-        errors, _ = contract.fetch_problems(value, w["kind"])
+        errors, _ = contract.fetch_problems(value, w["kind"], s.manifest["contract"])
         if errors:
             return {"error": {"problem": "fetch printed output that breaks the contract",
                               "details": errors[:20], "at": _now_iso()}}

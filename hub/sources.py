@@ -47,7 +47,7 @@ def load_manifest(src: str):
     except (ValueError, UnicodeDecodeError) as e:
         return None, [f"source.json is not valid JSON ({e})"], None
     if isinstance(m, dict) and isinstance(m.get("contract"), int) \
-            and not isinstance(m["contract"], bool) and m["contract"] != contract.CONTRACT_VERSION:
+            and not isinstance(m["contract"], bool) and m["contract"] not in contract.SUPPORTED:
         return None, [], m["contract"]
 
     errors = contract.validate(m, "manifest.schema.json")
@@ -127,7 +127,8 @@ def _load(found) -> Source:
     if other is not None:
         s.state = "incompatible"
         s.reason = (f"written for source contract {other}; this hub implements "
-                    f"contract {contract.CONTRACT_VERSION}")
+                    f"contract {contract.CONTRACT_VERSION} (and reads "
+                    f"{', '.join(map(str, contract.SUPPORTED[:-1]))})")
         s.fix = "update the hub" if other > contract.CONTRACT_VERSION else "update the source"
     elif m is None:
         s.state, s.reason, s.fix, s.details = "broken", "source.json breaks the contract", check, errors

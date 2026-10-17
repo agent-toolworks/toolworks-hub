@@ -87,10 +87,13 @@ function cell(v) {
 
 const RENDER = {
   stat(d) {
+    const resets = d.resets_at ? new Date(d.resets_at) : null;
     return el('div', { cls: 'stat' },
       el('p', {}, el('span', { cls: 'stat-value' }, typeof d.value === 'number' ? fmtNumber(d.value) : d.value),
         d.unit ? el('span', { cls: 'stat-unit' }, ` ${d.unit}`) : null),
-      d.label ? el('p', { cls: 'muted' }, d.label) : null);
+      d.label ? el('p', { cls: 'muted' }, d.label) : null,
+      resets && !isNaN(resets) ? el('p', { cls: 'muted', title: fmtTime(d.resets_at) },
+        'resets in ', el('span', { cls: 'quota-left', 'data-resets': resets.getTime() })) : null);
   },
 
   table(d) {
@@ -167,6 +170,7 @@ function renderPayload(p, body, meta) {
   }
   if (p.notice) body.append(el('p', { cls: 'notice' }, p.notice));
   if (p.data !== undefined && RENDER[p.kind]) body.append(RENDER[p.kind](p.data));
+  tickLeft();
   meta.textContent = [p.as_of && `as of ${fmtTime(p.as_of)}`, p.fetched_at && `fetched ${ago(p.fetched_at)}`]
     .filter(Boolean).join(' · ');
 }
@@ -249,9 +253,15 @@ const QUOTAS = [['five-hour', '5h'], ['seven-day', '7d']];
 let quotaTimer = null, leftTimer = null;
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-// When the window resets, from token-save's label ("used; resets Sat 12:40",
-// its strftime "%a %H:%M" in local time): the next such weekday and time.
-// A stat carries no timestamp field, so the label is what there is.
+// When the window resets: the stat's resets_at (contract 2). A source still
+// on contract 1 -- token-save up to 0.26.0 -- says it only in the label
+// ("used; resets Sat 12:40", strftime "%a %H:%M" in local time), read as the
+// next such weekday and time.
+function resetsOf(d) {
+  const t = d.resets_at ? new Date(d.resets_at) : null;
+  return t && !isNaN(t) ? t : resetsAt(d.label);
+}
+
 function resetsAt(label, now = new Date()) {
   const m = /resets (Sun|Mon|Tue|Wed|Thu|Fri|Sat) (\d{1,2}):(\d{2})/.exec(label || '');
   if (!m) return null;
@@ -299,7 +309,7 @@ function quotaBar(ts, label, p) {
   const pct = typeof d.value === 'number' ? Math.max(0, Math.min(100, d.value)) : null;
   const level = pct == null ? 'none' : pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'good';
   const why = p.error ? `could not read: ${p.error.problem}` : d.label || '';
-  const resets = pct != null ? resetsAt(d.label) : null;
+  const resets = pct != null ? resetsOf(d) : null;
   const fill = el('span', { cls: `quota-fill quota-${level}` });
   if (pct != null) fill.style.width = `${pct}%`;
   return el('a', { cls: 'quota-item', href: sourceHref(ts.key),

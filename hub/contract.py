@@ -20,7 +20,11 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTRACT_DIR = os.path.join(ROOT, "contract")
 
-CONTRACT_VERSION = 1           # the version of contract/ this hub implements
+CONTRACT_VERSION = 2           # the version of contract/ this hub implements
+SUPPORTED = (1, 2)             # versions it reads; 1's shapes are a subset of 2's
+# Fields a version added, so a source that prints one says it needs that
+# version: an older hub would refuse the output as an unknown field.
+ADDED_IN = {("stat", "resets_at"): 2}
 DETECT_TIMEOUT = 5             # seconds; detect runs on every hub start
 DEFAULT_TIMEOUT = 10           # seconds, for fetch and show; see manifest timeout_seconds
 CALL_TIMEOUT = 600             # seconds, for call: a language server's first run can take minutes
@@ -140,9 +144,18 @@ def data_problems(kind: str, data, path: str) -> tuple:
     return errors, warnings
 
 
-def fetch_problems(value, kind: str) -> tuple:
-    """Everything wrong with one `run fetch` output for a widget of this kind.
-    Returns (errors, warnings)."""
+def version_problems(kind: str, data, path: str, version: int) -> list:
+    """A field printed by a source that declares an older contract than the
+    one that added it."""
+    return [f"{path}.{field}: arrived in contract {v}, and this source declares contract {version}; "
+            f"set \"contract\": {v} in source.json"
+            for (k, field), v in sorted(ADDED_IN.items())
+            if k == kind and v > version and isinstance(data, dict) and field in data]
+
+
+def fetch_problems(value, kind: str, version: int = CONTRACT_VERSION) -> tuple:
+    """Everything wrong with one `run fetch` output for a widget of this kind,
+    from a source declaring contract `version`. Returns (errors, warnings)."""
     if isinstance(value, dict) and value.get("kind", kind) != kind:
         # Reported alone: the data was checked against the printed kind, so
         # its errors would describe the wrong shape.
@@ -150,11 +163,14 @@ def fetch_problems(value, kind: str) -> tuple:
     errors = validate(value, "fetch.schema.json")
     if errors:
         return errors, []
-    return data_problems(value["kind"], value["data"], "$.data")
+    errors = version_problems(value["kind"], value["data"], "$.data", version)
+    e, warnings = data_problems(value["kind"], value["data"], "$.data")
+    return errors + e, warnings
 
 
-def show_problems(value) -> tuple:
-    """Everything wrong with one `run show` output. Returns (errors, warnings)."""
+def show_problems(value, version: int = CONTRACT_VERSION) -> tuple:
+    """Everything wrong with one `run show` output, from a source declaring
+    contract `version`. Returns (errors, warnings)."""
     errors = validate(value, "show.schema.json")
     if errors:
         return errors, []
@@ -163,6 +179,7 @@ def show_problems(value) -> tuple:
     for dup in sorted({i for i in ids if ids.count(i) > 1}):
         errors.append(f"$.widgets: id '{dup}' is used more than once")
     for i, w in enumerate(value["widgets"]):
+        errors += version_problems(w["kind"], w["data"], f"$.widgets[{i}].data", version)
         e, wn = data_problems(w["kind"], w["data"], f"$.widgets[{i}].data")
         errors += e
         warnings += wn

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "detect.schema.json",
-  "title": "Output of `run detect`, contract 1",
+  "title": "Output of `run detect`, contract 2",
   "description": "not_installed is not here: a source that is not installed cannot run, so the hub works that state out itself.",
   "type": "object",
   "required": ["state"],

@@ -98,7 +98,7 @@ def _report(r: Report, label: str, errors: list, warnings: list) -> None:
         r.add("WARN", label, [w])
 
 
-def check_fetch(src: str, name: str, widget: dict, timeout: int, r: Report) -> None:
+def check_fetch(src: str, name: str, version: int, widget: dict, timeout: int, r: Report) -> None:
     label = f"fetch {widget['id']}"
     args = ["fetch", widget["id"]]
     if widget["kind"] == "search":
@@ -110,7 +110,7 @@ def check_fetch(src: str, name: str, widget: dict, timeout: int, r: Report) -> N
     if problem:
         r.add("FAIL", f"{label}: {problem}", sources.stderr_lines(stderr))
         return
-    _report(r, label, *contract.fetch_problems(value, widget["kind"]))
+    _report(r, label, *contract.fetch_problems(value, widget["kind"], version))
 
 
 def check_show(src: str, manifest: dict, given: list, timeout: int, r: Report) -> None:
@@ -129,7 +129,7 @@ def check_show(src: str, manifest: dict, given: list, timeout: int, r: Report) -
         if problem:
             r.add("FAIL", f"{label}: {problem}", sources.stderr_lines(stderr))
             continue
-        _report(r, label, *contract.show_problems(value))
+        _report(r, label, *contract.show_problems(value, manifest["contract"]))
     checked = {t for t, _ in given}
     for etype in shows:
         if etype not in checked:
@@ -171,7 +171,7 @@ def main(argv=None) -> int:
 
     timeout = manifest.get("timeout_seconds", contract.DEFAULT_TIMEOUT)
     for widget in manifest.get("widgets", []):
-        check_fetch(src, manifest["name"], widget, timeout, r)
+        check_fetch(src, manifest["name"], manifest["contract"], widget, timeout, r)
     check_show(src, manifest, given, timeout, r)
     return r.finish()
 

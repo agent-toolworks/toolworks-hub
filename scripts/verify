@@ -111,7 +111,18 @@ def case(what, instance, schema, want_valid, needle=""):
         print(f"bad {what}: {errors or 'no errors'}")
 
 case("a minimal manifest is valid", M, "manifest.schema.json", True)
-case("contract true is not contract 1", {**M, "contract": True}, "manifest.schema.json", False, "must be 1")
+case("contract true is not a contract version", {**M, "contract": True}, "manifest.schema.json", False, "must be one of 1, 2")
+case("contract 2 is valid", {**M, "contract": 2}, "manifest.schema.json", True)
+case("a stat may say when it resets", {"kind": "stat", "data": {"value": 3, "resets_at": "2026-10-18T12:40:00+03:00"}}, "fetch.schema.json", True)
+import contract as _c
+_v = {"kind": "stat", "data": {"value": 3, "resets_at": "2026-10-18T12:40:00Z"}}
+_e1, _ = _c.fetch_problems(_v, "stat", 1)
+print("ok a source on contract 1 that prints resets_at is told to declare contract 2"
+      if _e1 and 'set "contract": 2' in _e1[0] else f"bad contract 1 with resets_at: {_e1}")
+_e2, _ = _c.show_problems({"widgets": [{"id": "q", "kind": "stat", "title": "Q", "data": _v["data"]}]}, 1)
+print("ok and so is one whose show prints it" if _e2 and "$.widgets[0].data.resets_at" in _e2[0] else f"bad show: {_e2}")
+print("ok on contract 2 it is fine" if _c.fetch_problems(_v, "stat", 2) == ([], []) else "bad contract 2 with resets_at")
+case("resets_at is an ISO 8601 time with an offset", {"kind": "stat", "data": {"value": 3, "resets_at": "Sat 12:40"}}, "fetch.schema.json", False, "ISO 8601")
 case("timeout_seconds 10.5 is not an integer", {**M, "timeout_seconds": 10.5}, "manifest.schema.json", False, "expected integer")
 case("timeout_seconds true is not an integer", {**M, "timeout_seconds": True}, "manifest.schema.json", False, "expected integer")
 case("timeout_seconds above 60 is refused", {**M, "timeout_seconds": 61}, "manifest.schema.json", False, "maximum")
@@ -165,7 +176,7 @@ expect "bad-manifest: every fault named" 1 \
   "id 'a' is used more than once" "points outside the source folder"
 
 check newer-contract
-expect "newer-contract: refused as written for another contract" 1 "written for contract 2"
+expect "newer-contract: refused as written for another contract" 1 "written for contract 3"
 
 check no-run
 expect "no-run: refused" 1 "there is no \`run\` program"
@@ -226,7 +237,7 @@ want = {
     "claude": ("built-in", "working", ""),
     "token-save-fixture": ("plugin", "working", ""),
     "code-search": ("plugin", "working", ""),
-    "from-future": ("user", "incompatible", "written for source contract 2"),
+    "from-future": ("user", "incompatible", "written for source contract 3"),
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
     "bad-show": ("user", "working", ""),
