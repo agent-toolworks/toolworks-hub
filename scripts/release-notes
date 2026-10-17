@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# release-notes [X.Y.Z] -- the release page for vX.Y.Z: how to update, then that
+# version's CHANGELOG.md section. Default: the version in hub/version.py.
+#
+#   gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y.Z)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ver="${1:-$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")}"
+python3 - "$ROOT/CHANGELOG.md" "$ver" <<'PY'
+import re, sys
+text, ver = open(sys.argv[1]).read(), sys.argv[2]
+m = re.search(r"^## " + re.escape(ver) + r" .*?\n(.*?)(?=^## |\Z)", text, re.S | re.M)
+if not m or not m.group(1).strip():
+    sys.exit(f"release-notes: CHANGELOG.md has no section for {ver}")
+print("## Update\n")
+print("```sh\ngit -C <your toolworks-hub checkout> pull\nscripts/hub stop && scripts/hub open\n```\n")
+print(f"## What changed in {ver}\n")
+print(m.group(1).strip())
+PY

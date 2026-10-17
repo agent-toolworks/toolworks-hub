@@ -284,8 +284,12 @@ async function status(refresh) {
   try {
     const st = await api('/api/status' + (refresh ? '?refresh=1' : ''));
     linkable = new Set(st.linkable || []);
-    document.getElementById('updated').textContent =
-      `hub ${st.hub.version} · checked ${new Date().toLocaleTimeString()}`;
+    const v = document.getElementById('version');
+    v.textContent = `v${st.hub.version}`;
+    v.href = st.hub.release_url;
+    v.title = `toolworks-hub ${st.hub.version}, source contract ${st.hub.contract}: release notes`;
+    v.hidden = false;
+    document.getElementById('updated').textContent = `checked ${new Date().toLocaleTimeString()}`;
     renderProblems(st.problems || []);
     renderQuota(st);
     return st;

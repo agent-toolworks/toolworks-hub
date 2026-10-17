@@ -28,7 +28,7 @@ import discovery  # noqa: E402
 import pages  # noqa: E402
 import runner  # noqa: E402
 import sources  # noqa: E402
-from version import VERSION  # noqa: E402
+from version import RELEASES, VERSION  # noqa: E402
 
 DETECT_EVERY = 30  # seconds
 VIEWS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "views")
@@ -75,7 +75,8 @@ class Registry:
         with self._lock:
             loaded = [self._sources[k] for k in self._order]
             return {
-                "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION},
+                "hub": {"version": VERSION, "contract": contract.CONTRACT_VERSION,
+                        "release_url": f"{RELEASES}/tag/v{VERSION}"},
                 "sources": [{**s.public(), "view": view_for(s.name)} for s in loaded],
                 "available": list(self._available),
                 "pages": list(self._pages),

@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# set-version X.Y.Z -- set the hub's version everywhere it is written, and move
+# CHANGELOG.md's Unreleased section under it.
+#
+#   hub/version.py               VERSION
+#   sources/claude/source.json   "version" (the built-in source ships with the hub)
+#   CHANGELOG.md                 "## X.Y.Z — <today>", a fresh empty Unreleased above
+#
+# Then: scripts/verify, commit "Release X.Y.Z", tag vX.Y.Z, push it, and
+#   gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y.Z)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+new="${1:-}"
+[[ $new =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "usage: scripts/set-version X.Y.Z" >&2; exit 2; }
+python3 - "$ROOT" "$new" <<'PY'
+import datetime, json, re, sys
+root, new = sys.argv[1], sys.argv[2]
+p = f"{root}/hub/version.py"
+s = open(p).read()
+old = re.search(r'VERSION = "([^"]+)"', s).group(1)
+if old == new:
+    sys.exit(f"set-version: the version is already {new}")
+open(p, "w").write(s.replace(f'VERSION = "{old}"', f'VERSION = "{new}"'))
+p = f"{root}/sources/claude/source.json"
+s = open(p).read()
+assert f'"version": "{old}"' in s, f"{p} does not say version {old}"
+open(p, "w").write(s.replace(f'"version": "{old}"', f'"version": "{new}"', 1))
+p = f"{root}/CHANGELOG.md"
+s = open(p).read()
+head, sep, rest = s.partition("## Unreleased\n")
+if not sep:
+    sys.exit("set-version: CHANGELOG.md has no '## Unreleased' section")
+body, nxt, tail = rest.partition("\n## ")
+if not body.strip():
+    sys.exit("set-version: Unreleased in CHANGELOG.md is empty: say what changed first")
+today = datetime.date.today().isoformat()
+open(p, "w").write(f"{head}## Unreleased\n\n## {new} — {today}\n{body.rstrip()}\n\n## {tail}" if nxt
+                   else f"{head}## Unreleased\n\n## {new} — {today}\n{body.rstrip()}\n")
+print(f"{old} -> {new}. Run scripts/verify, commit \"Release {new}\", then: git tag v{new}")
+PY

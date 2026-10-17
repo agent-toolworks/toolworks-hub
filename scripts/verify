@@ -561,6 +561,9 @@ head_ "8. VERSIONS"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
+OUT=$("$ROOT/scripts/release-notes" 2>&1); RC=$?
+[[ $RC == 0 ]] && grep -q "## What changed in $HUBV" <<< "$OUT" && ok "CHANGELOG.md has a section for $HUBV, and release-notes prints it" \
+  || bad "release notes for $HUBV" "$OUT"
 
 python3 - "$ROOT/hub" "$ROOT/examples/pages" > "$TMP/py9a.out" 2>&1 <<'EOF'
 import json, os, sys

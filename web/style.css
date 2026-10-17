@@ -53,6 +53,12 @@ input {
   padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--card);
 }
 .top h1 { margin: 0; font-size: 20px; }
+.version {
+  font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px;
+  border: 1px solid var(--line); color: var(--muted); text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.version:hover { color: var(--accent); border-color: var(--accent); }
 .top #refresh { margin-left: auto; }
 .quota { display: flex; gap: 16px; align-items: center; margin-left: auto; }
 .quota + #refresh { margin-left: 0; }
