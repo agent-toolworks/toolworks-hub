@@ -15,6 +15,13 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.5.0 — 2026-10-18
+
+- **A timeseries chart has a grid and shows its values on hover.** Dashed
+  lines mark round value steps (0, 25, 50, 75, 100 % for a share) and five
+  times along the axis. Pointing at the chart marks the nearest reading with a
+  line and a dot on each series, and a box gives its time and each value.
+
 ## 0.4.1 — 2026-10-17
 
 - **Fix: a link in a view to another site opens in a new tab.** It opened in
