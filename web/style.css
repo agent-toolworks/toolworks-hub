@@ -177,6 +177,18 @@ body.full #panel > .source {
 body.full iframe.view { flex: 1; height: auto; min-height: 0; }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--line); }
+.chart .grid { stroke: var(--line); stroke-dasharray: 2 3; }
+.chart .crosshair { stroke: var(--muted); stroke-width: 1; }
+.chart .dot-mark { fill: currentColor; stroke: var(--card); stroke-width: 1.5; }
+.chart-wrap { position: relative; touch-action: pan-y; }
+.chart-tip {
+  position: absolute; pointer-events: none; white-space: nowrap; font-size: 12px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15); font-variant-numeric: tabular-nums;
+}
+.chart-tip[hidden] { display: none; }
+.chart-tip [class^="series-"]::before { content: "●"; margin-right: 4px; }
+.chart-tip .tip-name { color: var(--text); margin-right: 8px; }
 .chart .tick { fill: var(--muted); font-size: 11px; }
 .chart .series { fill: none; stroke-width: 2; }
 .series-0 { stroke: var(--s0); color: var(--s0); }

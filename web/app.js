@@ -137,19 +137,26 @@ const RENDER = {
     if (d.unit === '%' && v1 <= 100) v1 = 100;  // a share reads against the whole
     if (t0 === t1) { t0 -= 3600e3; t1 += 3600e3; }
     if (v0 === v1) v1 = v0 + 1;
+    const step = niceStep(v1 - v0);
+    v0 = Math.floor(v0 / step) * step;
+    v1 = Math.ceil(v1 / step) * step;
     const tick = t => fmtTick(t, t1 - t0);
     const W = 560, H = 200, L = 56, R = 16, T = 12, B = 28;
     const x = t => L + (t - t0) / (t1 - t0) * (W - L - R);
     const y = v => T + (1 - (v - v0) / (v1 - v0)) * (H - T - B);
     const unit = d.unit ? ` ${d.unit}` : '';
     const chart = svg('svg', { viewBox: `0 0 ${W} ${H}`, cls: 'chart', role: 'img',
-      'aria-label': `${d.series.map(s => s.name).join(', ')} over time` },
-      svg('line', { x1: L, x2: W - R, y1: y(v0), y2: y(v0), cls: 'axis' }),
-      svg('text', { x: L - 6, y: y(v1) + 4, 'text-anchor': 'end', cls: 'tick' }, fmtNumber(v1) + unit),
-      svg('text', { x: L - 6, y: y(v0) + 4, 'text-anchor': 'end', cls: 'tick' }, fmtNumber(v0)),
-      svg('text', { x: L, y: H - 8, cls: 'tick' }, tick(t0)),
-      svg('text', { x: (L + W - R) / 2, y: H - 8, 'text-anchor': 'middle', cls: 'tick' }, tick((t0 + t1) / 2)),
-      svg('text', { x: W - R, y: H - 8, 'text-anchor': 'end', cls: 'tick' }, tick(t1)));
+      'aria-label': `${d.series.map(s => s.name).join(', ')} over time` });
+    // The grid: a line at each value step, and at each of five times.
+    for (let i = 0, v = v0; v <= v1 + step / 2; v = v0 + ++i * step) {
+      chart.append(svg('line', { x1: L, x2: W - R, y1: y(v), y2: y(v), cls: i ? 'grid' : 'axis' }),
+        svg('text', { x: L - 6, y: y(v) + 4, 'text-anchor': 'end', cls: 'tick' }, fmtNumber(+v.toFixed(6)) + unit));
+    }
+    for (let i = 0; i <= 4; i++) {
+      const t = t0 + i / 4 * (t1 - t0);
+      chart.append(svg('line', { x1: x(t), x2: x(t), y1: T, y2: H - B, cls: 'grid' }),
+        svg('text', { x: x(t), y: H - 8, 'text-anchor': i ? i === 4 ? 'end' : 'middle' : 'start', cls: 'tick' }, tick(t)));
+    }
     d.series.forEach((s, i) => {
       let path = '', pen = false;
       for (const p of s.points) {
@@ -163,9 +170,68 @@ const RENDER = {
     const legend = d.series.length > 1
       ? el('ul', { cls: 'legend' }, d.series.map((s, i) => el('li', { cls: `series-${i % 6}` }, s.name)))
       : null;
-    return el('div', {}, chart, legend);
+    const wrap = el('div', { cls: 'chart-wrap' }, chart);
+    hoverValues(wrap, chart, d, inSpan, { x, y, W, T, bottom: H - B, unit });
+    return el('div', {}, wrap, legend);
   },
 };
+
+// A round step that splits a value range into about four parts: 1, 2, 2.5 or
+// 5 times a power of ten (0-100 % gives 0, 25, 50, 75, 100).
+function niceStep(range) {
+  const raw = range / 4, mag = 10 ** Math.floor(Math.log10(raw));
+  return [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => s >= raw);
+}
+
+// Pointing at a chart shows the readings at the nearest time any series has:
+// a line at that time, a dot on each series and a box with the values.
+function hoverValues(wrap, chart, d, inSpan, g) {
+  const byTime = new Map();
+  d.series.forEach((s, i) => {
+    for (const p of s.points) {
+      const t = Date.parse(p.t);
+      if (p.v == null || !inSpan(t)) continue;
+      if (!byTime.has(t)) byTime.set(t, []);
+      byTime.get(t)[i] = p.v;
+    }
+  });
+  const times = [...byTime.keys()].sort((a, b) => a - b);
+  const cross = svg('line', { y1: g.T, y2: g.bottom, cls: 'crosshair', visibility: 'hidden' });
+  const dots = d.series.map((s, i) => svg('circle', { r: 3.5, cls: `dot-mark series-${i % 6}`, visibility: 'hidden' }));
+  chart.append(cross, ...dots);
+  const tip = el('div', { cls: 'chart-tip', hidden: true });
+  wrap.append(tip);
+  const hide = () => {
+    tip.hidden = true;
+    cross.setAttribute('visibility', 'hidden');
+    dots.forEach(c => c.setAttribute('visibility', 'hidden'));
+  };
+  chart.addEventListener('pointerleave', hide);
+  chart.addEventListener('pointermove', e => {
+    const box = chart.getBoundingClientRect();
+    const scale = box.width / g.W;
+    const at = (e.clientX - box.left) / scale;
+    let lo = 0, hi = times.length - 1;  // the first time at or right of the pointer
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (g.x(times[mid]) < at) lo = mid + 1; else hi = mid; }
+    if (lo > 0 && at - g.x(times[lo - 1]) < g.x(times[lo]) - at) lo--;
+    const t = times[lo], vals = byTime.get(t), px = g.x(t);
+    cross.setAttribute('x1', px); cross.setAttribute('x2', px);
+    cross.setAttribute('visibility', 'visible');
+    dots.forEach((c, i) => {
+      if (vals[i] == null) { c.setAttribute('visibility', 'hidden'); return; }
+      c.setAttribute('cx', px); c.setAttribute('cy', g.y(vals[i]));
+      c.setAttribute('visibility', 'visible');
+    });
+    tip.replaceChildren(el('div', { cls: 'muted' }, fmtTime(new Date(t).toISOString())),
+      ...d.series.flatMap((s, i) => vals[i] == null ? []
+        : [el('div', { cls: `series-${i % 6}` }, el('span', { cls: 'tip-name' }, s.name), `${fmtNumber(vals[i])}${g.unit}`)]));
+    tip.hidden = false;
+    const left = px * scale, right = px * scale > box.width / 2;
+    tip.style.left = right ? '' : `${left + 12}px`;
+    tip.style.right = right ? `${box.width - left + 12}px` : '';
+    tip.style.top = `${g.T * scale}px`;
+  });
+}
 
 // A time on a chart's axis: the hour up to 12 hours, the day and hour up to a
 // week (24h would otherwise start and end on the same hour), the date beyond.
