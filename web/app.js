@@ -58,6 +58,15 @@ function fmtTime(iso) {
   return isNaN(d) ? iso : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 }
 
+// 9:39 AM today, Oct 18, 9:39 AM before: short enough for a line of stats.
+function fmtClock(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toDateString() === new Date().toDateString()
+    ? d.toLocaleTimeString(undefined, { timeStyle: 'short' })
+    : d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
 function fmtNumber(v) {
   return Number.isInteger(v) ? v.toLocaleString() : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
@@ -322,6 +331,62 @@ function widgetCard(source, w) {
   return card;
 }
 
+// A source's stat widgets share one strip, a line each at most, like the top
+// bar's quota bars: a stat's label and its times go to the tooltip, and when
+// they were fetched is said once, for the oldest of them.
+function statStrip(source, ws) {
+  const meta = el('span', { cls: 'widget-meta muted' });
+  const last = new Map();
+  const items = ws.map(w => {
+    const item = el('div', { cls: 'stat-item' }, el('span', { cls: 'stat-title' }, w.title),
+      el('span', { cls: 'muted' }, '…'));
+    const url = `/api/sources/${encodeURIComponent(source.key)}/widgets/${encodeURIComponent(w.id)}`;
+    const show = p => {
+      last.set(w.id, p);
+      statLine(item, w.title, p);
+      tickLeft();
+      const oldest = key => [...last.values()].map(q => q[key]).filter(Boolean)
+        .sort((a, b) => Date.parse(a) - Date.parse(b))[0];
+      const asOf = oldest('as_of'), fetched = oldest('fetched_at');
+      meta.textContent = [asOf && `as of ${fmtClock(asOf)}`, fetched && `fetched ${ago(fetched)}`]
+        .filter(Boolean).join(' · ');
+      meta.title = asOf ? `as of ${fmtTime(asOf)}` : '';
+    };
+    const load = () => api(url).then(show, err => show({ error: { problem: err.message } }));
+    load();
+    timers.push(setInterval(() => { if (!document.hidden) load(); }, Math.max(10, source.refresh_seconds) * 1000));
+    return item;
+  });
+  return el('article', { cls: 'widget widget-stats' }, ...items, meta);
+}
+
+function statLine(item, title, p) {
+  const d = p.data || {};
+  const resets = d.resets_at ? new Date(d.resets_at) : null;
+  const hasResets = resets && !isNaN(resets);
+  const pct = d.unit === '%' && typeof d.value === 'number' ? Math.max(0, Math.min(100, d.value)) : null;
+  const parts = [];
+  if (p.error) {
+    parts.push(el('span', { cls: 'error' }, 'could not read'));
+  } else if (pct != null) {
+    // A percentage with a reset is a quota, coloured as the top bar's are.
+    const level = !hasResets ? 'plain' : pct >= 90 ? 'bad' : pct >= 70 ? 'warn' : 'good';
+    const fill = el('span', { cls: `quota-fill quota-${level}` });
+    fill.style.width = `${pct}%`;
+    parts.push(el('span', { cls: 'quota-track', role: 'meter', 'aria-label': title,
+      'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': pct }, fill),
+    el('span', { cls: 'stat-num' }, `${fmtNumber(d.value)}%`));
+  } else if (d.value !== undefined) {
+    parts.push(el('span', { cls: 'stat-num' }, typeof d.value === 'number' ? fmtNumber(d.value) : d.value),
+      d.unit ? el('span', { cls: 'muted' }, d.unit) : null);
+  }
+  if (hasResets) parts.push(el('span', { cls: 'quota-left', 'data-resets': resets.getTime() }));
+  if (p.notice) parts.push(el('span', { cls: 'notice', title: p.notice }, '!'));
+  item.replaceChildren(el('span', { cls: 'stat-title' }, title), ...parts);
+  item.title = [d.label, hasResets && `resets ${fmtTime(d.resets_at)}`,
+    p.error && `could not read: ${p.error.problem}`, p.notice].filter(Boolean).join('\n');
+}
+
 function sourceCard(s) {
   const card = el('section', { cls: 'source' },
     el('header', { cls: 'source-head' },
@@ -343,7 +408,10 @@ function sourceCard(s) {
     frame.addEventListener('load', () => outsideLinksInNewTabs(frame));
     card.append(frame);
   } else if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
-    card.append(el('div', { cls: 'widgets' }, s.widgets.map(w => widgetCard(s, w))));
+    // The stats, in one strip where the first of them was.
+    const stats = s.widgets.filter(w => w.kind === 'stat');
+    card.append(el('div', { cls: 'widgets' }, s.widgets.map(w =>
+      w.kind !== 'stat' ? widgetCard(s, w) : w === stats[0] ? statStrip(s, stats) : null)));
   }
   return card;
 }

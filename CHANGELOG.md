@@ -15,6 +15,11 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **A source's stats share one compact strip.** Each stat is a single line --
+  title, value, and for a percentage a bar like the top bar's, with the time
+  until it resets -- and its label and exact times are in its tooltip. When
+  they were fetched is said once for the strip.
+
 ## 0.5.0 — 2026-10-18
 
 - **A timeseries chart has a grid and shows its values on hover.** Dashed

@@ -135,6 +135,18 @@ main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
 .error p { margin: 0 0 6px; }
 .notice { color: var(--warn); margin: 0 0 8px; }
 
+.widget-stats {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 24px;
+  padding: 8px 14px; font-size: 14px;
+}
+.widget-stats .widget-meta { margin: 0 0 0 auto; }
+.stat-item { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.stat-title { font-weight: 600; margin-right: 2px; }
+.stat-num { font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat-item .quota-track { width: 80px; }
+.stat-item .quota-left { color: var(--muted); }
+.stat-item .notice { margin: 0; font-weight: 700; }
+.quota-plain { background: var(--accent); }
 .stat p { margin: 0; }
 .stat-value { font-size: 32px; font-weight: 600; }
 .stat-unit { color: var(--muted); }
