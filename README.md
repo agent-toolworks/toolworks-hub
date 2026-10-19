@@ -62,7 +62,7 @@ code-search's `hub-source/` for every answer (see
 
 A session in any table links to that session's page, which gathers a section
 from every source that knows about it: the Claude Code source's transcript
-facts, token-save's cost over the session, and so on.
+facts, token-save's model, branch and context peak, and so on.
 
 ## Adding a page of links
 
