@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-19
+
 - **A source's stats share one compact strip.** Each stat is a single line --
   title, value, and for a percentage a bar like the top bar's, with the time
   until it resets -- and its label and exact times are in its tooltip. When
