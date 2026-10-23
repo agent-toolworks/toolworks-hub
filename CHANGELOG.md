@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-23
+
 - **Every Claude Code account on the machine.** The hub reads its own Claude
   Code folder first, then each `~/.claude*` folder that holds `projects/` (a
   second account's `~/.claude-work`, say), or the folders `hub.json`'s new
