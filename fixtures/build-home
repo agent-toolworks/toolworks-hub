@@ -31,6 +31,16 @@ What it holds, and what the hub must make of it:
               whose name is taken                               2 pages, 2 problems
   sessions    one active now, one three days ago, a file that
               is not a transcript, a folder named like one      2 sessions, 1 active today
+  account     .claude.json signed in as home@example.com        shown only beside a second folder
+
+A second Claude Code folder, for a second account, sits in a second home,
+<dir>/home2, so the hub finds it only when HOME=<dir>/home2:
+
+  .claude-work  work@example.com, one session active now, and
+                plugins: work-only (with a hub-source) and
+                token-save (a hub-source of its own)            work-only found; the first folder's
+                                                                token-save wins
+  .claude-old   no projects/ folder                             not a Claude Code folder
 """
 import json
 import os
@@ -42,6 +52,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 SOURCES = os.path.join(HERE, "sources")
 SID_RECENT = "aaaaaaaa-1111-4222-8333-444444444444"
 SID_OLD = "bbbbbbbb-1111-4222-8333-444444444444"
+SID_WORK = "cccccccc-1111-4222-8333-444444444444"
 
 
 def write_json(path, value):
@@ -150,6 +161,24 @@ def main(root):
 
     os.makedirs(os.path.join(root, "home"))
     os.makedirs(os.path.join(root, "cache"))
+    write_json(os.path.join(claude, ".claude.json"), {"oauthAccount": {"emailAddress": "home@example.com"}})
+
+    work = os.path.join(root, "home2", ".claude-work")
+    work_cache = os.path.join(work, "plugins", "cache")
+    work_records = {}
+    for key, version, hub in (("work-only@agent-toolworks", "1.0.0", ("passes", "work-only")),
+                              ("token-save@agent-toolworks", "0.6.0", ("passes", "token-save-fixture"))):
+        name, mkt = key.split("@")
+        path = os.path.join(work_cache, mkt, name, version)
+        os.makedirs(path)
+        source(hub[0], os.path.join(path, "hub-source"), hub[1])
+        work_records[key] = [{"scope": "user", "installPath": path, "version": version}]
+    write_json(os.path.join(work, "plugins", "installed_plugins.json"), {"version": 2, "plugins": work_records})
+    write_json(os.path.join(work, ".claude.json"), {"oauthAccount": {"emailAddress": "work@example.com"}})
+    work_projects = os.path.join(work, "projects", "-work-lib")
+    os.makedirs(work_projects)
+    transcript(os.path.join(work_projects, f"{SID_WORK}.jsonl"), SID_WORK, "dev", now - 60)
+    os.makedirs(os.path.join(root, "home2", ".claude-old"))
 
 
 if __name__ == "__main__":

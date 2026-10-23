@@ -15,6 +15,17 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **Every Claude Code account on the machine.** The hub reads its own Claude
+  Code folder first, then each `~/.claude*` folder that holds `projects/` (a
+  second account's `~/.claude-work`, say), or the folders `hub.json`'s new
+  `claude_dirs` lists; `"claude_dirs": []` turns that off. The Claude Code
+  source shows sessions, sessions today and plugins from all of them, with an
+  Account column when there is more than one, and a session page finds its
+  transcript in any of them. A plugin installed in any folder has its source,
+  the hub's own folder winning one installed in several. Every source gets
+  `TOOLWORKS_CLAUDE_DIRS`, so token-save shows each account's quota (#5).
+  `hub status` lists the folders.
+
 ## 0.6.0 — 2026-10-19
 
 - **A source's stats share one compact strip.** Each stat is a single line --

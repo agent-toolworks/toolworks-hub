@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """The hub's built-in source: Claude Code's own data on this machine.
 
-It reads only files Claude Code writes, under $CLAUDE_CONFIG_DIR (default
-~/.claude): transcripts under projects/<folder>/<session id>.jsonl, and the
-plugin records under plugins/. It follows the same contract as every other
-source and imports nothing from the hub.
+It reads only files Claude Code writes, under each Claude Code folder the hub
+names in TOOLWORKS_CLAUDE_DIRS (else $CLAUDE_CONFIG_DIR, default ~/.claude):
+transcripts under projects/<folder>/<session id>.jsonl, the plugin records
+under plugins/, and the signed-in account's email from the folder's
+.claude.json. With more than one folder, sessions and plugins carry an
+Account column, so a second account (CLAUDE_CONFIG_DIR=~/.claude-work claude)
+is told apart. It follows the same contract as every other source and
+imports nothing from the hub.
 
 Transcripts are read only as far as the first records that name the
 session's directory and branch (HEAD_BYTES at most), except by `show`, which
@@ -30,6 +34,48 @@ def claude_dir():
     return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
 
 
+def claude_dirs():
+    """Every Claude Code folder to read, the hub's own first."""
+    raw = os.environ.get("TOOLWORKS_CLAUDE_DIRS") or ""
+    return [d for d in raw.split(os.pathsep) if d] or [claude_dir()]
+
+
+def tilde(path):
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home + os.sep) else path
+
+
+def email(folder):
+    """The email of the account signed in to a folder, from its .claude.json:
+    inside the folder, or ~/.claude.json beside the default ~/.claude."""
+    path = os.path.join(folder, ".claude.json")
+    default = os.path.expanduser("~/.claude")
+    if not os.path.exists(path) and os.path.realpath(folder) == os.path.realpath(default):
+        path = os.path.expanduser("~/.claude.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            account = json.load(f).get("oauthAccount")
+        value = account.get("emailAddress")
+        return value if isinstance(value, str) and value else None
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def accounts(dirs):
+    """{folder: label} when there is more than one folder, else {}: the
+    account's email, with the folder when two share one, else the folder."""
+    if len(dirs) < 2:
+        return {}
+    emails = {d: email(d) for d in dirs}
+    out = {}
+    for d, e in emails.items():
+        if e and list(emails.values()).count(e) == 1:
+            out[d] = e
+        else:
+            out[d] = f"{e} ({tilde(d)})" if e else tilde(d)
+    return out
+
+
 def out(value):
     json.dump(value, sys.stdout)
     sys.stdout.write("\n")
@@ -47,30 +93,32 @@ def from_iso(text):
 
 
 def transcripts():
-    """(session id, path, mtime, size) for every top-level transcript, newest
-    first. Files whose name is not a session ID are not transcripts."""
-    root = os.path.join(claude_dir(), "projects")
+    """(session id, path, mtime, size, Claude Code folder) for every top-level
+    transcript in every folder, newest first. Files whose name is not a
+    session ID are not transcripts."""
     found = []
-    try:
-        folders = os.listdir(root)
-    except OSError:
-        return found
-    for folder in folders:
-        d = os.path.join(root, folder)
+    for base in claude_dirs():
+        root = os.path.join(base, "projects")
         try:
-            names = os.listdir(d)
+            folders = os.listdir(root)
         except OSError:
             continue
-        for n in names:
-            stem, ext = os.path.splitext(n)
-            if ext != ".jsonl" or not UUID.match(stem):
-                continue
-            path = os.path.join(d, n)
+        for folder in folders:
+            d = os.path.join(root, folder)
             try:
-                st = os.stat(path)
+                names = os.listdir(d)
             except OSError:
                 continue
-            found.append((stem, path, st.st_mtime, st.st_size))
+            for n in names:
+                stem, ext = os.path.splitext(n)
+                if ext != ".jsonl" or not UUID.match(stem):
+                    continue
+                path = os.path.join(d, n)
+                try:
+                    st = os.stat(path)
+                except OSError:
+                    continue
+                found.append((stem, path, st.st_mtime, st.st_size, base))
     found.sort(key=lambda t: t[2], reverse=True)
     return found
 
@@ -106,7 +154,7 @@ def vkey(v):
 
 def detect():
     d = claude_dir()
-    if not os.path.isdir(d):
+    if not any(os.path.isdir(x) for x in claude_dirs()):
         out({"state": "not_set_up", "reason": f"there is no Claude Code folder at {d}",
              "fix": "run Claude Code once, or set CLAUDE_CONFIG_DIR to its folder"})
     else:
@@ -120,29 +168,35 @@ def sessions_today():
 
 
 def sessions():
+    label = accounts(claude_dirs())
     rows = []
-    for sid, path, mtime, size in transcripts()[:RECENT]:
+    for sid, path, mtime, size, base in transcripts()[:RECENT]:
         h = head(path)
-        rows.append({
+        row = {
             "session": {"ref": "session", "id": sid, "label": sid[:8]},
             "project": h.get("cwd") or os.path.basename(os.path.dirname(path)),
             "branch": h.get("branch"),
             "last-active": local(mtime),
             "size": round(size / 1024),
-        })
-    out({"kind": "table", "data": {
-        "columns": [
-            {"id": "session", "title": "Session"},
-            {"id": "project", "title": "Project"},
-            {"id": "branch", "title": "Branch"},
-            {"id": "last-active", "title": "Last activity"},
-            {"id": "size", "title": "Transcript", "unit": "KB"},
-        ],
-        "rows": rows,
-    }})
+        }
+        if label:
+            row["account"] = label[base]
+        rows.append(row)
+    columns = [
+        {"id": "session", "title": "Session"},
+        {"id": "project", "title": "Project"},
+        {"id": "branch", "title": "Branch"},
+        {"id": "last-active", "title": "Last activity"},
+        {"id": "size", "title": "Transcript", "unit": "KB"},
+    ]
+    if label:
+        columns.insert(1, {"id": "account", "title": "Account"})
+    out({"kind": "table", "data": {"columns": columns, "rows": rows}})
 
 
 def plugins():
+    dirs = claude_dirs()
+    label = accounts(dirs)
     columns = [
         {"id": "plugin", "title": "Plugin"},
         {"id": "marketplace", "title": "Marketplace"},
@@ -150,22 +204,35 @@ def plugins():
         {"id": "newest", "title": "Newest in cache"},
         {"id": "status", "title": "Status"},
     ]
+    if label:
+        columns.insert(1, {"id": "account", "title": "Account"})
     result = {"kind": "table", "data": {"columns": columns, "rows": []}}
-    path = os.path.join(claude_dir(), "plugins", "installed_plugins.json")
+    notices = []
+    for base in dirs:
+        notice = folder_plugins(base, result["data"]["rows"], label.get(base))
+        if notice:
+            notices.append(f"{tilde(base)}: {notice}" if label else notice)
+    if notices:
+        result["notice"] = "; ".join(notices)
+    out(result)
+
+
+def folder_plugins(base, rows, account):
+    """Add one Claude Code folder's plugins to rows; a notice, or None."""
+    path = os.path.join(base, "plugins", "installed_plugins.json")
     try:
         with open(path, encoding="utf-8") as f:
             doc = json.load(f)
     except FileNotFoundError:
-        return out(result)
+        return None
     except (OSError, ValueError) as e:
-        result["notice"] = f"could not read installed_plugins.json ({e})"
-        return out(result)
+        return f"could not read installed_plugins.json ({e})"
     if not isinstance(doc, dict):
-        result["notice"] = "installed_plugins.json is not an object"
-        return out(result)
+        return "installed_plugins.json is not an object"
+    notice = None
     if doc.get("version") != 2:
-        result["notice"] = (f"installed_plugins.json is format {doc.get('version')!r}; "
-                            f"this source was written for format 2")
+        notice = (f"installed_plugins.json is format {doc.get('version')!r}; "
+                  f"this source was written for format 2")
 
     for key, records in sorted((doc.get("plugins") or {}).items()):
         records = [r for r in records if isinstance(r, dict)] if isinstance(records, list) else []
@@ -177,7 +244,7 @@ def plugins():
             continue
         loaded = rec.get("version") if isinstance(rec.get("version"), str) else None
         try:
-            cached = [v for v in os.listdir(os.path.join(claude_dir(), "plugins", "cache", market, name))
+            cached = [v for v in os.listdir(os.path.join(base, "plugins", "cache", market, name))
                       if VERSION.match(v)]
         except OSError:
             cached = []
@@ -185,16 +252,19 @@ def plugins():
         status = "ok"
         if loaded and newest and VERSION.match(loaded) and vkey(newest) > vkey(loaded):
             status = f"stale: {newest} is in the cache; run claude plugin update {name}, then restart"
-        result["data"]["rows"].append({"plugin": name, "marketplace": market, "loaded": loaded,
-                                       "newest": newest, "status": status})
-    out(result)
+        row = {"plugin": name, "marketplace": market, "loaded": loaded,
+               "newest": newest, "status": status}
+        if account:
+            row["account"] = account
+        rows.append(row)
+    return notice
 
 
 def show_session(sid):
     match = next((t for t in transcripts() if t[0] == sid), None)
     if match is None:
         return out({"widgets": []})
-    _, path, mtime, size = match
+    _, path, mtime, size, base = match
     h = head(path)
     messages = 0
     try:
@@ -217,6 +287,9 @@ def show_session(sid):
         ("Claude Code", h.get("version")),
         ("Transcript", f"{path} ({round(size / 1024)} KB)"),
     ]
+    label = accounts(claude_dirs())
+    if label:
+        facts.insert(0, ("Account", label[base]))
     out({"widgets": [
         {"id": "messages", "kind": "stat", "title": "Messages",
          "data": {"value": messages, "label": "user and assistant records"}},

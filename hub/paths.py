@@ -3,7 +3,8 @@
 it reads, so the hub and the tool never disagree about where things are.
 
 - Claude Code's folder: $CLAUDE_CONFIG_DIR, else ~/.claude -- the order
-  token-save documents for history.db.
+  token-save documents for history.db. The hub reads other Claude Code
+  folders too, after this one (discovery.claude_dirs).
 - The hub's settings and the user's sources: $XDG_CONFIG_HOME/agent-toolworks,
   else ~/.config/agent-toolworks, beside repo-fleet's ~/.config/repo-fleet.
 - The hub's own settings file: hub.json in that folder; the user's link

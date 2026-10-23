@@ -49,6 +49,14 @@ It finds sources in four places: the built-in Claude Code source, a
 {"source_dirs": ["~/git/team-sources"]}
 ```
 
+It reads every Claude Code folder on the machine, not only its own
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`): each `~/.claude*` folder that holds a
+`projects/` folder, such as `~/.claude-work` for a second account. Sessions and
+plugins then carry an Account column (the account's email, else the folder), a
+plugin installed for either account has its source, and token-save shows every
+account's quota. `{"claude_dirs": ["~/.claude-work"]}` in `hub.json` names the
+folders instead, and `{"claude_dirs": []}` reads only the hub's own.
+
 Each source gets a tab, with a dot for its state (the states are in
 [docs/contract.md](docs/contract.md#states)); only the open tab fetches. A
 last tab lists the agent-toolworks plugins you have not installed, with their

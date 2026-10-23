@@ -19,7 +19,9 @@ my-source/
 ```
 
 The hub looks for sources in these places only, in this order: inside the
-hub, in a `hub-source/` folder inside each installed Claude Code plugin, in
+hub, in a `hub-source/` folder inside each installed Claude Code plugin (in
+every Claude Code folder the hub reads, below; its own folder wins for a
+plugin installed in several), in
 `~/.config/agent-toolworks/sources/*/`, and in the folders listed in
 `~/.config/agent-toolworks/hub.json` (below). It never downloads one. Names
 are claimed in that order; a later source with a name already taken is shown
@@ -34,6 +36,20 @@ as broken.
 
 (`page_dirs` holds link pages, not sources: see
 [custom-pages.md](custom-pages.md).)
+
+**Claude Code folders.** The hub reads its own Claude Code folder
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`) first, then every other one: a second
+account usually has a folder of its own (`CLAUDE_CONFIG_DIR=~/.claude-work
+claude`). Without a setting, that is each `~/.claude*` folder that holds a
+`projects/` folder. `claude_dirs` in `hub.json` replaces the search with the
+folders it lists, and `"claude_dirs": []` turns it off:
+
+```json
+{"claude_dirs": ["~/.claude-work"]}
+```
+
+`hub status` lists the folders, and every source is told them (`run`,
+below).
 
 Each folder in `source_dirs` that has a `source.json` is one source; any other
 folder holds one source per subfolder (folders starting with `.` are
@@ -68,7 +84,11 @@ source folder, with no stdin and the hub's environment plus
 `TOOLWORKS_SOURCE_CONFIG`: the folder for this source's own settings,
 `~/.config/agent-toolworks/source-config/<name>/`. The hub only names it; it
 may not exist until the user creates it. Keep per-person settings there rather
-than beside `run`, so a source shared in a git repo never holds them.
+than beside `run`, so a source shared in a git repo never holds them. It also
+gets `TOOLWORKS_CLAUDE_DIRS`: every Claude Code folder the hub reads, joined
+with `:` (`;` on Windows), the hub's own first. A source that reads Claude
+Code's data, or something a tool keeps inside that folder, can read each of
+them; one that ignores it reads what it always did.
 
 | Command | Prints | Limit |
 | --- | --- | --- |

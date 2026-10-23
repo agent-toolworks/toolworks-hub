@@ -6,7 +6,10 @@ Sources come from these places and nowhere else; the hub never downloads one:
 1. inside the hub, under sources/ (the Claude data source);
 2. a hub-source/ folder inside each installed Claude Code plugin, found by the
    plugin's installPath in installed_plugins.json -- never by searching the
-   PATH, because plugins run from Claude Code's cache;
+   PATH, because plugins run from Claude Code's cache. Every Claude Code
+   folder is read (claude_dirs), the hub's own first, so a plugin installed
+   only for a second account still has its source, and the hub's own folder
+   wins for a plugin installed in several;
 3. the user's folder, ~/.config/agent-toolworks/sources/*/;
 4. the folders named in ~/.config/agent-toolworks/hub.json's source_dirs, in
    the order listed -- a git checkout of a team's sources, say. A folder with
@@ -54,18 +57,22 @@ def _read_json(path: str):
 
 def plugin_records():
     """({"name@marketplace": record}, problem). The user-scope record wins
-    when a plugin is installed in several scopes."""
-    path = os.path.join(paths.claude_dir(), "plugins", "installed_plugins.json")
-    doc, problem = _read_json(path)
-    if not isinstance(doc, dict):
-        return {}, problem
-    records = {}
-    for key, entries in (doc.get("plugins") or {}).items():
-        if isinstance(entries, list):
-            entries = [e for e in entries if isinstance(e, dict)]
-            if entries:
-                records[key] = next((e for e in entries if e.get("scope") == "user"), entries[0])
-    return records, problem
+    when a plugin is installed in several scopes, and the first Claude Code
+    folder that has a plugin wins when several do: the hub's own."""
+    records, problems = {}, []
+    for folder in claude_dirs()[0]:
+        path = os.path.join(folder, "plugins", "installed_plugins.json")
+        doc, problem = _read_json(path)
+        if problem:
+            problems.append(problem)
+        if not isinstance(doc, dict):
+            continue
+        for key, entries in (doc.get("plugins") or {}).items():
+            if isinstance(entries, list) and key not in records:
+                entries = [e for e in entries if isinstance(e, dict)]
+                if entries:
+                    records[key] = next((e for e in entries if e.get("scope") == "user"), entries[0])
+    return records, "; ".join(problems) or None
 
 
 def _subdirs(root: str) -> list:
@@ -77,7 +84,7 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
-SETTINGS = ("source_dirs", "page_dirs", "port")
+SETTINGS = ("source_dirs", "page_dirs", "port", "claude_dirs")
 DEFAULT_PORT = 7437
 
 
@@ -91,6 +98,38 @@ def source_dirs():
     """(the folders hub.json's source_dirs names, problems). Problems with
     hub.json as a whole, such as an unknown setting, are reported here."""
     return folder_setting("source_dirs", whole_file=True)
+
+
+def claude_dirs():
+    """(every Claude Code folder the hub reads, problems).
+
+    The hub's own (paths.claude_dir()) first. Then the folders hub.json's
+    claude_dirs names, or, without that setting, each ~/.claude* folder that
+    holds a projects/ folder: a second account usually lives in one of its
+    own (CLAUDE_CONFIG_DIR=~/.claude-work claude), and the hub, started from
+    either, would otherwise see only that one. "claude_dirs": [] turns the
+    search off. A folder reached twice is read once.
+    """
+    own = os.path.normpath(os.path.expanduser(paths.claude_dir()))
+    full_path = paths.hub_config_path()
+    doc, _ = _read_json(full_path)
+    problems = []
+    if isinstance(doc, dict) and "claude_dirs" in doc:
+        named, problems = folder_setting("claude_dirs")
+    else:
+        home = os.path.expanduser("~")
+        try:
+            names = sorted(os.listdir(home))
+        except OSError:
+            names = []
+        named = [os.path.join(home, n) for n in names
+                 if n.startswith(".claude") and os.path.isdir(os.path.join(home, n, "projects"))]
+    out, seen = [own], {os.path.realpath(own)}
+    for d in named:
+        if os.path.realpath(d) not in seen:
+            seen.add(os.path.realpath(d))
+            out.append(os.path.normpath(d))
+    return out, problems
 
 
 def port_setting():
@@ -151,15 +190,19 @@ def find():
 
 def catalogue() -> list:
     """The plugins the agent-toolworks marketplace lists, from Claude Code's
-    copy on disk. Empty when that marketplace was never added."""
-    known, _ = _read_json(os.path.join(paths.claude_dir(), "plugins", "known_marketplaces.json"))
-    entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
-    location = entry.get("installLocation") if isinstance(entry, dict) else None
-    if not isinstance(location, str):
-        location = os.path.join(paths.claude_dir(), "plugins", "marketplaces", MARKETPLACE)
-    doc, _ = _read_json(os.path.join(location, ".claude-plugin", "marketplace.json"))
-    plugins = doc.get("plugins") if isinstance(doc, dict) else None
-    return [p for p in plugins or [] if isinstance(p, dict) and isinstance(p.get("name"), str)]
+    copy on disk, in the first Claude Code folder that has one. Empty when
+    that marketplace was never added."""
+    for folder in claude_dirs()[0]:
+        known, _ = _read_json(os.path.join(folder, "plugins", "known_marketplaces.json"))
+        entry = known.get(MARKETPLACE) if isinstance(known, dict) else None
+        location = entry.get("installLocation") if isinstance(entry, dict) else None
+        if not isinstance(location, str):
+            location = os.path.join(folder, "plugins", "marketplaces", MARKETPLACE)
+        doc, _ = _read_json(os.path.join(location, ".claude-plugin", "marketplace.json"))
+        plugins = doc.get("plugins") if isinstance(doc, dict) else None
+        if plugins:
+            return [p for p in plugins if isinstance(p, dict) and isinstance(p.get("name"), str)]
+    return []
 
 
 def not_installed() -> list:

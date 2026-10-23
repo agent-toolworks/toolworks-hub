@@ -58,6 +58,7 @@ class Registry:
         self._available: list = []
         self._problems: list = []
         self._pages: list = []
+        self._claude_dirs: list = []
         self._detected_at = None       # time.monotonic()
         self._cache: dict = {}         # (key, widget id) -> entry
         self._widget_locks: dict = {}
@@ -74,7 +75,8 @@ class Registry:
             self._available = discovery.not_installed()
             self._pages, page_problems = pages.find()
             _, port_problem = discovery.port_setting()
-            self._problems = problems + page_problems + ([port_problem] if port_problem else [])
+            self._claude_dirs, dir_problems = discovery.claude_dirs()
+            self._problems = problems + page_problems + dir_problems + ([port_problem] if port_problem else [])
             self._detected_at = time.monotonic()
 
     def status(self) -> dict:
@@ -86,6 +88,7 @@ class Registry:
                 "sources": [{**s.public(), "view": view_for(s)} for s in loaded],
                 "available": list(self._available),
                 "pages": list(self._pages),
+                "claude_dirs": list(self._claude_dirs),
                 "problems": list(self._problems),
                 # A reference is drawn as a link only when something can show it.
                 "linkable": sorted({t for s in loaded if s.state in sources.FETCHABLE

@@ -13,7 +13,9 @@ hub. Each command gets:
   memory. The file's size is checked before a byte of it is read.
 - no stdin, and the source folder as its working directory.
 - the hub's environment plus TOOLWORKS_SOURCE_CONFIG, the folder for this
-  source's own settings (paths.source_config_dir). It may not exist yet.
+  source's own settings (paths.source_config_dir), which may not exist yet,
+  and TOOLWORKS_CLAUDE_DIRS, every Claude Code folder the hub reads
+  (discovery.claude_dirs), joined with os.pathsep, the hub's own first.
 
 The hub's state for a source that fails here is `broken`, shown with the
 problem and the end of stderr.
@@ -33,6 +35,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import contract  # noqa: E402
+import discovery  # noqa: E402
 import paths  # noqa: E402
 
 STDERR_TAIL = 4000  # bytes of stderr kept for display
@@ -85,7 +88,8 @@ def call(source_dir: str, args: list, timeout: float, name: str):
     """Run `<source_dir>/run args...` as the source called `name`. Returns
     (value, None, stderr) when it printed valid JSON and exited 0, else
     (None, problem, stderr)."""
-    env = dict(os.environ, TOOLWORKS_SOURCE_CONFIG=paths.source_config_dir(name))
+    env = dict(os.environ, TOOLWORKS_SOURCE_CONFIG=paths.source_config_dir(name),
+               TOOLWORKS_CLAUDE_DIRS=os.pathsep.join(discovery.claude_dirs()[0]))
     r = run(os.path.join(source_dir, "run"), args, source_dir, timeout, env)
     if r.error is not None:
         return None, f"did not start ({r.error})", r.stderr

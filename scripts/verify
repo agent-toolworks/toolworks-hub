@@ -359,6 +359,10 @@ print("ok the project and branch come from the transcript" if rows and rows[0]["
       else f"bad first row: {rows[:1]}")
 plugins = {r["plugin"]: r for r in load("claude-plugins.json")["data"]["rows"]}
 ts = plugins.get("token-save", {})
+print("ok with one Claude Code folder, sessions and plugins have no Account column"
+      if "account" not in [c["id"] for c in load("claude-sessions.json")["data"]["columns"]]
+      and "account" not in [c["id"] for c in load("claude-plugins.json")["data"]["columns"]]
+      else "bad an Account column with one folder")
 print("ok token-save 0.6.0 is stale, with 0.25.0 in the cache" if ts.get("status", "").startswith("stale: 0.25.0")
       else f"bad token-save row: {ts}")
 print("ok agent-teller is not listed" if "agent-teller" not in plugins else "bad agent-teller is listed")
@@ -367,6 +371,72 @@ print("ok show counts the session's messages" if w.get("messages", {}).get("data
       else f"bad show: {w}")
 EOF
 tally < "$TMP/py5.out"
+
+# A second Claude Code folder (#5): in the second home, ~/.claude-work holds
+# another account's sessions and plugins.
+WORK=cccccccc-1111-4222-8333-444444444444
+in_home2() {
+  CLAUDE_CONFIG_DIR="$HOME_FIX/claude" XDG_CONFIG_HOME="$HOME_FIX/config" \
+  XDG_CACHE_HOME="$HOME_FIX/cache" HOME="$HOME_FIX/home2" "$@"
+}
+in_home2 bounded 30 "$HUB" status --json > "$TMP/status2.json" 2>&1 || bad "hub status --json with two folders failed" "$(cat "$TMP/status2.json")"
+in_home2 bounded 30 "$HUB" status > "$TMP/status2.txt" 2>&1
+in_home2 python3 - "$ROOT" "$HOME_FIX" "$TMP" > "$TMP/py5b.out" 2>&1 <<'EOF'
+import json, os, sys
+root, fix, tmp = sys.argv[1:4]
+sys.path.insert(0, os.path.join(root, "hub"))
+import discovery, runner
+own, work = os.path.join(fix, "claude"), os.path.join(fix, "home2", ".claude-work")
+st = json.load(open(os.path.join(tmp, "status2.json")))
+print("ok the hub reads its own folder, then each ~/.claude* folder that holds projects/"
+      if st.get("claude_dirs") == [own, work] else f"bad claude_dirs: {st.get('claude_dirs')}")
+text = open(os.path.join(tmp, "status2.txt")).read()
+print("ok hub status lists the folders it reads" if "CLAUDE CODE FOLDERS" in text and "  ~/.claude-work\n" in text
+      else f"bad hub status text: {text[:300]!r}")
+got = {s["key"]: s for s in st["sources"]}
+print("ok a plugin installed only in the second folder has its source" if got.get("work-only", {}).get("state") == "working"
+      else f"bad work-only: {got.get('work-only')}")
+ts = got.get("token-save-fixture", {})
+print("ok a plugin installed in both folders is found once, from the hub's own folder"
+      if "token-save-fixture~2" not in got and ts.get("dir", own).startswith(own) else f"bad token-save: {sorted(got)}")
+
+# Through the runner, as the hub runs it: the source is told the folders.
+claude = os.path.join(root, "sources", "claude")
+call = lambda *a: runner.call(claude, list(a), 30, "claude")[0] or {}
+sess = call("fetch", "sessions")["data"] if call("fetch", "sessions") else {}
+who = {r["session"]["id"][:8]: r.get("account") for r in sess.get("rows", [])}
+print("ok a source receives TOOLWORKS_CLAUDE_DIRS: sessions from both folders, with an Account column"
+      if [c["id"] for c in sess.get("columns", [])][:2] == ["session", "account"]
+      and who == {"cccccccc": "work@example.com", "aaaaaaaa": "home@example.com", "bbbbbbbb": "home@example.com"}
+      else f"bad sessions with two folders: {sess}")
+today = call("fetch", "sessions-today").get("data", {}).get("value")
+print("ok sessions today counts both folders" if today == 2 else f"bad sessions today: {today}")
+plug = {(r["plugin"], r.get("account")) for r in call("fetch", "plugins").get("data", {}).get("rows", [])}
+print("ok plugins of both folders, each with its account"
+      if {("work-only", "work@example.com"), ("token-save", "work@example.com"), ("token-save", "home@example.com")} <= plug
+      else f"bad plugins with two folders: {plug}")
+show = call("show", "session", "cccccccc-1111-4222-8333-444444444444").get("widgets", [])
+items = {i["text"]: i["detail"] for w in show if w["kind"] == "list" for i in w["data"]["items"]}
+print("ok a session page finds a transcript in the second folder and names its account"
+      if items.get("Account") == "work@example.com" and items.get("Branch") == "dev" else f"bad show: {show}")
+
+# hub.json's claude_dirs replaces the search; [] turns it off.
+cfg = os.path.join(tmp, "dirscfg")
+os.environ["XDG_CONFIG_HOME"] = cfg
+os.makedirs(os.path.join(cfg, "agent-toolworks"))
+hub_json = os.path.join(cfg, "agent-toolworks", "hub.json")
+other = os.path.join(fix, "team")
+for value, want, label in [
+    ([], [own], "[] turns the search off"),
+    ([other, own], [own, other], "a list replaces the search, the hub's own folder first and once"),
+    (["/no/such/folder"], [own], "a folder that does not exist is left out"),
+]:
+    json.dump({"claude_dirs": value}, open(hub_json, "w"))
+    dirs, problems = discovery.claude_dirs()
+    fine = dirs == want and (bool(problems) == (label.startswith("a folder that")))
+    print(f"ok claude_dirs: {label}" if fine else f"bad claude_dirs {value}: {dirs} {problems}")
+EOF
+tally < "$TMP/py5b.out"
 
 head_ "6. SERVER"
 INFO="$HOME_FIX/cache/agent-toolworks/server.json"

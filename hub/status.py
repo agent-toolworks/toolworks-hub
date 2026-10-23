@@ -10,6 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import discovery  # noqa: E402
 from registry import Registry  # noqa: E402
 
 LABELS = {"working": "working", "stale": "update waiting", "not_set_up": "not set up",
@@ -28,6 +29,10 @@ def main(argv=None) -> int:
         return 0
 
     print(f"toolworks-hub {st['hub']['version']}, source contract {st['hub']['contract']}\n")
+    print("CLAUDE CODE FOLDERS")
+    for d in st["claude_dirs"]:
+        print(f"  {discovery.tilde(d)}")
+    print()
     width = max([len(s["key"]) for s in st["sources"]] + [8])
     print("SOURCES")
     for s in st["sources"]:
