@@ -187,6 +187,25 @@ body.full #panel > .source {
   display: flex; flex-direction: column;
 }
 body.full iframe.view { flex: 1; height: auto; min-height: 0; }
+/* A tab showing a view: the hub's header and tabs, the source's bar, then the view filling the
+   rest of the window edge to edge, so the view scrolls on its own and the hub page never does. */
+body.with-view { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+body.with-view main {
+  /* main's usual `margin: 0 auto` would stop it stretching across the flex column. */
+  flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column;
+}
+body.with-view #problems { padding: 8px 24px 0; }
+body.with-view #panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+body.with-view #panel > .source {
+  flex: 1; min-height: 0; margin: 0; padding: 0; border: none; border-radius: 0;
+  display: flex; flex-direction: column;
+}
+body.with-view #panel > .source > .source-head {
+  padding: 8px 24px; border-bottom: 1px solid var(--line); background: var(--card);
+}
+body.with-view #panel > .source > .note { margin: 8px 24px; }
+body.with-view iframe.view { flex: 1; height: auto; min-height: 0; margin: 0; border: none; border-radius: 0; }
 .chart { width: 100%; height: auto; display: block; }
 .chart .axis { stroke: var(--line); }
 .chart .grid { stroke: var(--line); stroke-dasharray: 2 3; }
@@ -221,6 +240,9 @@ body.full iframe.view { flex: 1; height: auto; min-height: 0; }
   .quota-track { width: auto; flex: 1; }
   .quota-item { flex: 1; }
   .source { padding: 12px 14px; }
+  body.with-view #problems { padding-left: 16px; padding-right: 16px; }
+  body.with-view #panel > .source > .source-head { padding-left: 16px; padding-right: 16px; }
+  body.with-view #panel > .source > .note { margin-left: 16px; margin-right: 16px; }
   .widgets { grid-template-columns: 1fr; }
 }
 

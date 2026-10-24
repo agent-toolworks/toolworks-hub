@@ -15,6 +15,11 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **A view tab fills the window.** A tab that shows a source's view lays out
+  like its pop-out but keeps the hub's header and tabs: the source's bar, then
+  the view across the full width and down to the bottom of the window. Only the
+  view scrolls, not the hub page around it. Tabs of widgets are unchanged.
+
 ## 0.7.0 — 2026-10-23
 
 - **Every Claude Code account on the machine.** The hub reads its own Claude

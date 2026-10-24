@@ -598,7 +598,7 @@ function stopTimers() {
 
 async function loadEntity(type, id, refresh) {
   stopTimers();
-  document.body.classList.remove('full');
+  document.body.classList.remove('full', 'with-view');
   document.title = 'Toolworks Hub';
   showView('entity');
   const view = document.getElementById('entity');
@@ -652,6 +652,7 @@ async function loadTab(wanted, refresh) {
   if (shown !== location.hash) history.replaceState(null, '', shown);
   if (!full) remember(hash);
   document.body.classList.toggle('full', full);
+  document.body.classList.remove('with-view');
   renderTabs(st, hash);
   const title = hash === NOT_INSTALLED ? 'Not installed'
     : (linkPages.find(p => pageHref(p.name) === hash) || sources.find(s => sourceHref(s.key) === hash) || {}).title;
@@ -672,7 +673,10 @@ async function loadTab(wanted, refresh) {
     return;
   }
   const s = sources.find(x => sourceHref(x.key) === hash);
-  panel.replaceChildren(s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.'));
+  const card = s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.');
+  panel.replaceChildren(card);
+  // A tab showing a view lays out like a pop-out, keeping the header and tabs.
+  document.body.classList.toggle('with-view', Boolean(card.querySelector('iframe.view')));
 }
 
 // A link page: sections of links from a JSON file (hub/pages.py). An http(s)
