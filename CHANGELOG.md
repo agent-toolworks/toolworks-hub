@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.8.0 — 2026-10-23
+
 - **A view tab fills the window.** A tab that shows a source's view lays out
   like its pop-out but keeps the hub's header and tabs: the source's bar, then
   the view across the full width and down to the bottom of the window. Only the
