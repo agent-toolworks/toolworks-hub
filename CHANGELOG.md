@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.9.0 — 2026-10-25
+
 - **Background sessions.** `hub bg` lists Claude Code background sessions
   (`claude --bg`) from every Claude Code folder, starts one in a folder, and
   stops, removes or finishes one, printing JSON. A source runs it as
