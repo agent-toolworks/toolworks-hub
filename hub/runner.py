@@ -14,8 +14,9 @@ hub. Each command gets:
 - no stdin, and the source folder as its working directory.
 - the hub's environment plus TOOLWORKS_SOURCE_CONFIG, the folder for this
   source's own settings (paths.source_config_dir), which may not exist yet,
-  and TOOLWORKS_CLAUDE_DIRS, every Claude Code folder the hub reads
-  (discovery.claude_dirs), joined with os.pathsep, the hub's own first.
+  TOOLWORKS_CLAUDE_DIRS, every Claude Code folder the hub reads
+  (discovery.claude_dirs), joined with os.pathsep, the hub's own first, and
+  TOOLWORKS_HUB, the hub's command, for `hub bg` (claude_bg.py).
 
 The hub's state for a source that fails here is `broken`, shown with the
 problem and the end of stderr.
@@ -89,7 +90,8 @@ def call(source_dir: str, args: list, timeout: float, name: str):
     (value, None, stderr) when it printed valid JSON and exited 0, else
     (None, problem, stderr)."""
     env = dict(os.environ, TOOLWORKS_SOURCE_CONFIG=paths.source_config_dir(name),
-               TOOLWORKS_CLAUDE_DIRS=os.pathsep.join(discovery.claude_dirs()[0]))
+               TOOLWORKS_CLAUDE_DIRS=os.pathsep.join(discovery.claude_dirs()[0]),
+               TOOLWORKS_HUB=os.path.join(paths.ROOT, "scripts", "hub"))
     r = run(os.path.join(source_dir, "run"), args, source_dir, timeout, env)
     if r.error is not None:
         return None, f"did not start ({r.error})", r.stderr

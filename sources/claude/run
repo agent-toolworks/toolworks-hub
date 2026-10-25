@@ -13,10 +13,14 @@ imports nothing from the hub.
 Transcripts are read only as far as the first records that name the
 session's directory and branch (HEAD_BYTES at most), except by `show`, which
 counts one session's messages. Nothing from a message's content is printed.
+
+Background sessions, and the claude.ai session each is bridged to, come from
+`hub bg list`, through TOOLWORKS_HUB like any other source would (#7).
 """
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from datetime import datetime
@@ -26,6 +30,7 @@ VERSION = re.compile(r"^[0-9]+(\.[0-9]+)*$")
 HEAD_BYTES = 256 * 1024
 RECENT = 20
 DAY = 24 * 3600
+BG_TIMEOUT = 8  # seconds for `hub bg list`, inside the fetch's 10
 # agent-teller is a separate tool that runs separately; the hub never lists it.
 EXCLUDED = frozenset({"agent-teller"})
 
@@ -167,8 +172,74 @@ def sessions_today():
     out({"kind": "stat", "data": {"value": n, "unit": "sessions", "label": "with activity in the last 24 hours"}})
 
 
+def background():
+    """`hub bg list`: (sessions, problem or None)."""
+    hub = os.environ.get("TOOLWORKS_HUB")
+    if not hub:
+        return [], "TOOLWORKS_HUB is not set, so background sessions are not listed; the hub sets it"
+    try:
+        r = subprocess.run([hub, "bg", "list"], stdin=subprocess.DEVNULL, capture_output=True,
+                           text=True, timeout=BG_TIMEOUT)
+        doc = json.loads(r.stdout)
+    except subprocess.TimeoutExpired:
+        return [], f"hub bg list took longer than {BG_TIMEOUT} s"
+    except (OSError, ValueError) as e:
+        return [], f"hub bg list failed: {e}"
+    if not isinstance(doc, dict) or not isinstance(doc.get("sessions"), list):
+        return [], f"hub bg list failed: {(doc or {}).get('error') if isinstance(doc, dict) else doc}"
+    return doc["sessions"], "; ".join(doc.get("problems") or []) or None
+
+
+def link_cells(row, links):
+    """The App and Web cells of a bridged session."""
+    if links:
+        row["app"] = {"link": links["app"], "label": "open in app"}
+        row["web"] = {"link": links["web"], "label": "claude.ai"}
+
+
+LINK_COLUMNS = [{"id": "app", "title": "App"}, {"id": "web", "title": "Web"}]
+
+
+def background_sessions():
+    label = accounts(claude_dirs())
+    found, problem = background()
+    rows = []
+    for s in found:
+        sid = s.get("session_id")
+        started = from_iso(s["started_at"]) if s.get("started_at") else None
+        row = {
+            "session": ({"ref": "session", "id": sid, "label": s["id"]} if sid and UUID.match(sid)
+                        else s["id"]),
+            "name": s.get("name"),
+            "project": s.get("cwd"),
+            "state": s.get("state") or s.get("status"),
+            "started": local(started) if started else None,
+        }
+        if label and s.get("claude_dir") in label:
+            row["account"] = label[s["claude_dir"]]
+        link_cells(row, s.get("links"))
+        rows.append(row)
+    columns = [
+        {"id": "session", "title": "Session"},
+        {"id": "name", "title": "Name"},
+        {"id": "project", "title": "Project"},
+        {"id": "state", "title": "State"},
+        {"id": "started", "title": "Started"},
+    ] + LINK_COLUMNS
+    if label:
+        columns.insert(1, {"id": "account", "title": "Account"})
+    result = {"kind": "table", "data": {"columns": columns, "rows": rows}}
+    if problem:
+        result["notice"] = problem
+    out(result)
+
+
 def sessions():
     label = accounts(claude_dirs())
+    # A recent session that runs in the background, bridged to claude.ai,
+    # gets its links; the others have none.
+    bridged = {s["session_id"]: s["links"] for s in background()[0]
+               if s.get("session_id") and s.get("links")}
     rows = []
     for sid, path, mtime, size, base in transcripts()[:RECENT]:
         h = head(path)
@@ -181,6 +252,7 @@ def sessions():
         }
         if label:
             row["account"] = label[base]
+        link_cells(row, bridged.get(sid))
         rows.append(row)
     columns = [
         {"id": "session", "title": "Session"},
@@ -188,7 +260,7 @@ def sessions():
         {"id": "branch", "title": "Branch"},
         {"id": "last-active", "title": "Last activity"},
         {"id": "size", "title": "Transcript", "unit": "KB"},
-    ]
+    ] + (LINK_COLUMNS if any("app" in r for r in rows) else [])
     if label:
         columns.insert(1, {"id": "account", "title": "Account"})
     out({"kind": "table", "data": {"columns": columns, "rows": rows}})
@@ -306,6 +378,8 @@ def main(argv):
         return sessions_today()
     if cmd == ["fetch", "sessions"]:
         return sessions()
+    if cmd == ["fetch", "background"]:
+        return background_sessions()
     if cmd == ["fetch", "plugins"]:
         return plugins()
     if cmd == ["show", "session"] and len(argv) == 4:

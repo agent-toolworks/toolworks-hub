@@ -1,5 +1,5 @@
 {
-  "contract": 1,
+  "contract": 4,
   "name": "claude",
   "title": "Claude Code",
   "version": "0.8.0",
@@ -8,6 +8,7 @@
   "widgets": [
     {"id": "sessions-today", "kind": "stat", "title": "Active sessions"},
     {"id": "sessions", "kind": "table", "title": "Recent sessions"},
+    {"id": "background", "kind": "table", "title": "Background sessions"},
     {"id": "plugins", "kind": "table", "title": "Installed plugins"}
   ],
   "shows": ["session"]

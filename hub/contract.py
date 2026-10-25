@@ -20,12 +20,13 @@ import re
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTRACT_DIR = os.path.join(ROOT, "contract")
 
-CONTRACT_VERSION = 3           # the version of contract/ this hub implements
-SUPPORTED = (1, 2, 3)          # versions it reads; each one's shapes are a subset of the next's
+CONTRACT_VERSION = 4           # the version of contract/ this hub implements
+SUPPORTED = (1, 2, 3, 4)       # versions it reads; each one's shapes are a subset of the next's
 # Fields a version added, so a source that prints one says it needs that
 # version: an older hub would refuse the output as an unknown field.
 ADDED_IN = {("stat", "resets_at"): 2}
 WIDGET_ADDED_IN = {"ranges": 3}    # manifest widget fields, the same way
+LINK_CELL_ADDED_IN = 4             # a table cell {"link": url}
 DETECT_TIMEOUT = 5             # seconds; detect runs on every hub start
 DEFAULT_TIMEOUT = 10           # seconds, for fetch and show; see manifest timeout_seconds
 CALL_TIMEOUT = 600             # seconds, for call: a language server's first run can take minutes
@@ -126,7 +127,7 @@ def data_problems(kind: str, data, path: str) -> tuple:
             for key, cell in row.items():
                 if key not in cols:
                     errors.append(f"{path}.rows[{i}]: '{key}' is not one of the columns")
-                if isinstance(cell, dict):
+                if isinstance(cell, dict) and "ref" in cell:
                     refs.append((f"{path}.rows[{i}].{key}", cell))
     elif kind in ("list", "search"):
         field = "items" if kind == "list" else "results"
@@ -148,10 +149,18 @@ def data_problems(kind: str, data, path: str) -> tuple:
 def version_problems(kind: str, data, path: str, version: int) -> list:
     """A field printed by a source that declares an older contract than the
     one that added it."""
-    return [f"{path}.{field}: arrived in contract {v}, and this source declares contract {version}; "
-            f"set \"contract\": {v} in source.json"
-            for (k, field), v in sorted(ADDED_IN.items())
-            if k == kind and v > version and isinstance(data, dict) and field in data]
+    problems = [f"{path}.{field}: arrived in contract {v}, and this source declares contract {version}; "
+                f"set \"contract\": {v} in source.json"
+                for (k, field), v in sorted(ADDED_IN.items())
+                if k == kind and v > version and isinstance(data, dict) and field in data]
+    if kind == "table" and version < LINK_CELL_ADDED_IN:
+        for i, row in enumerate(data["rows"]):
+            for key, cell in row.items():
+                if isinstance(cell, dict) and "link" in cell:
+                    v = LINK_CELL_ADDED_IN
+                    problems.append(f"{path}.rows[{i}].{key}: a link cell arrived in contract {v}, and this "
+                                    f"source declares contract {version}; set \"contract\": {v} in source.json")
+    return problems
 
 
 def fetch_problems(value, kind: str, version: int = CONTRACT_VERSION) -> tuple:

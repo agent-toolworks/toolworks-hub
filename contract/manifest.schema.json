@@ -1,14 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "manifest.schema.json",
-  "title": "Source manifest (source.json), contract 3",
+  "title": "Source manifest (source.json), contract 4",
   "type": "object",
   "required": ["contract", "name", "title", "version", "network"],
   "additionalProperties": false,
   "properties": {
     "contract": {
-      "description": "The contract version this source was written against. A hub implementing contract 3 also reads sources written for 1 and 2, whose shapes are subsets.",
-      "enum": [1, 2, 3]
+      "description": "The contract version this source was written against. A hub implementing contract 4 also reads sources written for 1, 2 and 3, whose shapes are subsets.",
+      "enum": [1, 2, 3, 4]
     },
     "name": {
       "description": "Unique among sources; used in URLs.",

@@ -5,6 +5,8 @@
 #   status        every source the hub finds, and its state
 #   check-source  check a source folder against the source contract
 #   serve, stop   run the server in the foreground; stop a running one
+#   bg            Claude Code background sessions, for sources: list, start,
+#                 stop, rm, finish
 #
 # python3 is the one requirement; the hub installs nothing.
 set -euo pipefail
@@ -28,6 +30,9 @@ USAGE
   hub check-source <folder> [--entity TYPE=ID ...]
   hub serve [--port N] [--no-idle-exit]
   hub stop
+  hub bg list
+  hub bg start --cwd DIR --name NAME --prompt TEXT [--model M] [--claude-dir D] [-- ARGS]
+  hub bg stop|rm|finish ID [--claude-dir D]
 
 COMMANDS
   open          start the server if it is not running, and open the hub in
@@ -42,6 +47,10 @@ COMMANDS
                 something did, 2 for bad usage.
   serve         run the server in the foreground (for development).
   stop          stop the running server.
+  bg            Claude Code background sessions, as JSON, for a source's
+                run to use through $TOOLWORKS_HUB: list them with their
+                claude.ai links, start one in a folder, stop or remove one,
+                or finish one (stop, then remove). See docs/contract.md.
 EOF
 }
 
@@ -50,6 +59,7 @@ command -v python3 >/dev/null 2>&1 || die "hub: python3 is required and was not 
 case "${1:-}" in
   check-source) shift; exec python3 "$ROOT/hub/check_source.py" "$@" ;;
   status)       shift; exec python3 "$ROOT/hub/status.py" "$@" ;;
+  bg)           shift; exec python3 "$ROOT/hub/claude_bg.py" "$@" ;;
   open|serve|stop) exec python3 "$ROOT/hub/server.py" "$@" ;;
   ""|-h|--help|help) usage ;;
   *) usage >&2; die "hub: unknown command '$1'" ;;

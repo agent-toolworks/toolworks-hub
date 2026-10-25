@@ -1,4 +1,4 @@
-# The source contract, version 3
+# The source contract, version 4
 
 A source is a folder the hub can show: a manifest saying what it offers and a
 program that prints JSON. The hub's own sources and the ones you write follow
@@ -64,7 +64,7 @@ of the hub carries on.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `contract` | yes | `3` (or `2`, `1`), the contract version the source was written for. Any other value makes the source *incompatible*. |
+| `contract` | yes | `4` (or `3`, `2`, `1`), the contract version the source was written for. Any other value makes the source *incompatible*. |
 | `name` | yes | Unique among sources: lowercase letters, digits and dashes. Used in URLs. |
 | `title` | yes | Shown as the source's heading. |
 | `version` | yes | The source's own version. |
@@ -88,7 +88,8 @@ than beside `run`, so a source shared in a git repo never holds them. It also
 gets `TOOLWORKS_CLAUDE_DIRS`: every Claude Code folder the hub reads, joined
 with `:` (`;` on Windows), the hub's own first. A source that reads Claude
 Code's data, or something a tool keeps inside that folder, can read each of
-them; one that ignores it reads what it always did.
+them; one that ignores it reads what it always did. And it gets
+`TOOLWORKS_HUB`, the hub's own command, for [`hub bg`](#background-sessions).
 
 | Command | Prints | Limit |
 | --- | --- | --- |
@@ -115,7 +116,9 @@ Rules for every command:
   source *broken*.** The hub shows the problem and the last lines of stderr,
   so write diagnostics to stderr.
 - **Leave nothing running.** Each command runs in its own process group, and
-  the whole group is killed when the command exits or runs out of time.
+  the whole group is killed when the command exits or runs out of time. A
+  background session started with `hub bg start` is the exception: Claude
+  Code runs it, not the command, and it keeps running.
 - **Keep secrets inside the source.** Read a token from the Keychain or an
   environment variable; never put it in the manifest or the output.
 
@@ -172,9 +175,58 @@ click the page handles itself, and a page that sets `location` from script
 are left alone: to open another site from script, use `window.open(url,
 '_blank', 'noopener')`.
 
+A `claude://` link in a view, such as a background session's `app` link, is
+opened from the hub's own page, which hands it to the Claude app and stays
+where it is; the browser may ask first, and does nothing when the app is not
+installed. A link with any other scheme is left to the browser.
+
 A source's page runs on the hub's origin, inside the hub's own page, so it can
 do anything the hub's page can. That is no more than its `run` can already do
 as you, but install a source with a page only from someone you trust.
+
+## Background sessions
+
+A source that starts Claude Code sessions for its items ("start a session for
+this ticket") does it through the hub, in `run call`, rather than with
+`claude` itself: the hub finds the binary, keeps the hub's own session out of
+the new one's environment, reads the rows of `claude agents` that are there,
+and builds the claude.ai links. Every command prints one JSON object, and on
+failure exits 1 with `{"error": "..."}`:
+
+```sh
+"$TOOLWORKS_HUB" bg list
+"$TOOLWORKS_HUB" bg start --cwd DIR --name NAME --prompt TEXT [--model M] [--claude-dir D] [-- MORE CLAUDE ARGUMENTS]
+"$TOOLWORKS_HUB" bg stop ID      # stop it; its transcript is kept
+"$TOOLWORKS_HUB" bg rm ID        # remove it, and its worktree
+"$TOOLWORKS_HUB" bg finish ID    # stop, then remove
+```
+
+- **`list`** prints `{"claude", "sessions", "problems"}`. Each session is
+  `{"id", "session_id", "name", "cwd", "state", "status", "started_at",
+  "claude_dir", "links"}`, newest first, from every Claude Code folder the hub
+  reads (`claude agents --json --all` in each). `state` is Claude Code's:
+  `working`, `blocked` (it waits for a person, such as an approval) or
+  `done`. Any field but `id` and `claude_dir` may be null. `links` is
+  `{"web": "https://claude.ai/code/session_…", "app": "claude://code/session_…"}`
+  once Remote Control has bridged the session to claude.ai, and null before
+  that or without Remote Control. A folder that cannot be listed is a line in
+  `problems`, and the others are still listed.
+- **`start`** runs `claude --bg` in `--cwd`, under the hub's own Claude Code
+  folder unless `--claude-dir` names another, and prints `{"id", "name",
+  "claude", "claude_dir", "cwd"}`. `id` is what `stop`, `rm` and `finish`
+  take. When the folder's `.mcp.json` names a server the account has not
+  approved, a `notice` says the session will wait, `blocked`, at the approval
+  dialog: `claude --bg` reports that it started either way. A prompt may not
+  begin with `-`.
+- **`stop`, `rm` and `finish`** act in the folder that lists the session,
+  or in `--claude-dir`. `finish` removes a session that has already exited.
+
+The binary is `TOOLWORKS_CLAUDE_BIN` when set, else `claude` on `PATH`, else
+Claude Code's usual install places. The links come from one field of Claude
+Code's own `jobs/<id>/state.json`; the hub reads nothing else from it.
+
+A link from a background session goes in a table as a [link
+cell](#widget-shapes), or, in a view, as a plain `<a href>`.
 
 ## Widget shapes
 
@@ -196,6 +248,10 @@ printed `kind` must match the manifest's. Times are ISO 8601 with an offset:
   "columns": [{"id": "session", "title": "Session"}, {"id": "cost", "title": "Cost", "unit": "USD"}],
   "rows": [{"session": {"ref": "session", "id": "11111111-2222-4333-8444-555555555555"}, "cost": 0.42}]}}
 
+{"kind": "table", "data": {
+  "columns": [{"id": "name", "title": "Name"}, {"id": "open", "title": "Open"}],
+  "rows": [{"name": "fix bug", "open": {"link": "claude://code/session_01AbCdEf", "label": "open in app"}}]}}
+
 {"kind": "list", "data": {"items": [{"text": "Ticket work", "detail": "2 repos"}]}}
 
 {"kind": "search", "notice": "PARTIAL: one engine timed out", "data": {"results": [
@@ -206,8 +262,11 @@ A stat's `resets_at` (contract 2) says when a quota or window resets; the hub
 shows the time left and counts down to it. Put the human wording in `label` as
 well if you like, but the hub reads the time only from `resets_at`.
 
-A table cell is a string, number, boolean, null or reference, and every key in
-a row must be a column id. A search result's `evidence` says how the source
+A table cell is a string, number, boolean, null, reference or link, and every
+key in a row must be a column id. A link (contract 4) is `{"link": url,
+"label": text}`, the label optional: an `https://` or `http://` link opens in
+a new browser tab, and a `claude://` link is handed to the Claude app. No
+other scheme is accepted. A search result's `evidence` says how the source
 knows (code-search's *resolved* or *textual*). It is shown with the result,
 because it decides how much an empty result is worth.
 
@@ -240,17 +299,19 @@ an ID that breaks its type's rule is an error.
   older hub. The hub shows a source written for a contract it does not read as
   *incompatible*.
 - **A hub reads older contracts too**, when a version only adds fields: this
-  hub implements 3 and reads 1 and 2, so a source never has to move just
+  hub implements 4 and reads 1 to 3, so a source never has to move just
   because the hub did. A source moves to a new version when it prints a field that version
   added, and must then declare it; `check-source` fails a source that prints
-  `resets_at` while declaring contract 1, or lists `ranges` while declaring
-  2, because an older hub would refuse it.
+  `resets_at` while declaring contract 1, lists `ranges` while declaring 2,
+  or prints a link cell while declaring 3, because an older hub would refuse
+  it.
 
 | Version | Adds |
 | --- | --- |
 | 1 | the first contract |
 | 2 | a stat's `resets_at` |
 | 3 | a timeseries widget's `ranges` |
+| 4 | a table cell that is a link |
 - **`entities.json` `version`** goes up when a type is added. An existing
   type's ID rule never changes; that would be a contract change.
 

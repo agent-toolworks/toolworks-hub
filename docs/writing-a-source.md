@@ -142,6 +142,18 @@ Print `{"widgets": []}` when you know nothing about that entity, and the hub
 leaves your section out. [entities.json](../contract/entities.json) lists the
 types and the rule each ID follows. Version 1 has `session`.
 
+A table cell can also link out of the hub (contract 4): to a web page, which
+opens in a new tab, or to the Claude app:
+
+```json
+{"link": "https://grafana.example.com/d/abc", "label": "dashboard"}
+```
+
+To start a Claude Code session for one of your items, run `"$TOOLWORKS_HUB"
+bg start` from `run call`, and list or finish sessions with `bg list` and `bg
+finish`; see [Background sessions](contract.md#background-sessions). Their
+`links` go in a link cell as they are.
+
 ## Shipping a source in a plugin
 
 A Claude Code plugin can carry its source in a `hub-source/` folder at its

@@ -13,7 +13,9 @@
 #                    name collisions, hub.json source_dirs, agent-teller
 #                    never loaded or listed.
 #   5. CLAUDE SOURCE the built-in source meets the contract and reads the
-#                    fake home's sessions and plugins correctly.
+#                    fake home's sessions and plugins correctly; hub bg
+#                    starts, lists and finishes background sessions on a
+#                    fake claude, and links only the bridged ones.
 #   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
 #                    hub open / stop.
 #   7. VIEWS         the code-search view groups hits by repo, and the quota
@@ -158,6 +160,15 @@ case("a table cell that is neither a value nor a ref is refused",
 case("a table cell may be a ref",
      {"kind": "table", "data": {"columns": [{"id": "a", "title": "A"}], "rows": [{"a": {"ref": "session", "id": "s"}}]}},
      "fetch.schema.json", True)
+case("contract 4 is valid", {**M, "contract": 4}, "manifest.schema.json", True)
+_L = lambda link: {"kind": "table", "data": {"columns": [{"id": "a", "title": "A"}], "rows": [{"a": link}]}}
+case("a table cell may be an https or claude:// link", _L({"link": "claude://code/session_01AB", "label": "app"}), "fetch.schema.json", True)
+case("a link cell takes no other scheme", _L({"link": "javascript:alert(1)"}), "fetch.schema.json", False, "claude:// URL")
+_e = _c.fetch_problems(_L({"link": "https://claude.ai/code/session_01AB"}), "table", 3)[0]
+print("ok a source on contract 3 that prints a link cell is told to declare contract 4"
+      if _e and 'set "contract": 4' in _e[0] else f"bad link cell on contract 3: {_e}")
+print("ok on contract 4 it is fine" if _c.fetch_problems(_L({"link": "https://x.example"}), "table", 4) == ([], [])
+      else "bad link cell on contract 4")
 case("show output carries a kind per widget",
      {"widgets": [{"id": "w", "kind": "stat", "title": "W", "data": {"value": "4"}}]}, "show.schema.json", True)
 EOF
@@ -193,7 +204,7 @@ expect "bad-manifest: every fault named" 1 \
   "id 'a' is used more than once" "points outside the source folder"
 
 check newer-contract
-expect "newer-contract: refused as written for another contract" 1 "written for contract 4"
+expect "newer-contract: refused as written for another contract" 1 "written for contract 5"
 
 check no-run
 expect "no-run: refused" 1 "there is no \`run\` program"
@@ -254,7 +265,7 @@ want = {
     "claude": ("built-in", "working", ""),
     "token-save-fixture": ("plugin", "working", ""),
     "code-search": ("plugin", "working", ""),
-    "from-future": ("user", "incompatible", "written for source contract 4"),
+    "from-future": ("user", "incompatible", "written for source contract 5"),
     "claude~2": ("user", "broken", "already used by the built-in source"),
     "user-broken": ("user", "broken", "did not print valid JSON"),
     "bad-show": ("user", "working", ""),
@@ -437,6 +448,125 @@ for value, want, label in [
     print(f"ok claude_dirs: {label}" if fine else f"bad claude_dirs {value}: {dirs} {problems}")
 EOF
 tally < "$TMP/py5b.out"
+
+# hub bg (#7), on a fake claude. The hub's own folder is not ~/.claude, so a
+# command on it carries CLAUDE_CONFIG_DIR; ~/.claude itself is reached with
+# the variable unset.
+in_home python3 - "$ROOT" "$HOME_FIX" "$TMP" > "$TMP/py5c.out" 2>&1 <<'EOF'
+import json, os, subprocess, sys
+root, fix, tmp = sys.argv[1:4]
+sys.path.insert(0, os.path.join(root, "hub"))
+import runner
+hub = os.path.join(root, "scripts", "hub")
+own, default = os.path.join(fix, "claude"), os.path.join(fix, "home", ".claude")
+log = os.path.join(tmp, "fake-claude.log")
+os.makedirs(default, exist_ok=True)
+GOOD = "cse_01AbCdEf"
+rows = [
+    {"id": "aaaa1111", "kind": "background", "sessionId": "aaaaaaaa-1111-4222-8333-444444444444", "name": "fix bug",
+     "cwd": "/work/app", "state": "working", "status": "busy", "pid": 1, "startedAt": 1792900000000},
+    {"id": "bbbb2222", "kind": "background", "state": "blocked"},          # keys missing: read with .get
+    {"id": "cccc3333", "kind": "background", "state": "done"},             # a state file with a bad id
+    {"kind": "interactive", "sessionId": "dddddddd-1111-4222-8333-444444444444", "status": "idle"},
+    {"kind": "background", "state": "done"},                               # no id: not listed
+]
+json.dump(rows, open(os.path.join(own, "fake-agents.json"), "w"))
+json.dump([{"id": "eeee5555", "kind": "background", "state": "done"}], open(os.path.join(default, "fake-agents.json"), "w"))
+for sid, value in (("aaaa1111", GOOD), ("cccc3333", "cse_01AB; rm -rf /")):
+    os.makedirs(os.path.join(own, "jobs", sid), exist_ok=True)
+    json.dump({"bridgeSessionId": value, "bridgeOwnerAccountUuid": "secret-account"},
+              open(os.path.join(own, "jobs", sid, "state.json"), "w"))
+
+env = dict(os.environ, TOOLWORKS_CLAUDE_BIN=os.path.join(root, "fixtures", "fake-claude"), FAKE_CLAUDE_LOG=log,
+           TOOLWORKS_CLAUDE_DIRS=os.pathsep.join([own, default]), CLAUDECODE="1",
+           CLAUDE_CODE_EXECPATH="/stale/claude", CLAUDE_CODE_SESSION_ID="parent")
+def bg(*args, cwd=None):
+    r = subprocess.run([hub, "bg"] + list(args), env=env, cwd=cwd, capture_output=True, text=True)
+    try:
+        return r.returncode, json.loads(r.stdout)
+    except ValueError:
+        return r.returncode, {"stdout": r.stdout, "stderr": r.stderr}
+def calls():
+    out = [json.loads(l) for l in open(log)] if os.path.exists(log) else []
+    open(log, "w").close()
+    return out
+
+rc, got = bg("list")
+by = {s["id"]: s for s in got.get("sessions", [])}
+print("ok bg list: background rows with an id, from every folder; interactive and id-less rows left out"
+      if rc == 0 and sorted(by) == ["aaaa1111", "bbbb2222", "cccc3333", "eeee5555"] else f"bad bg list: {rc} {got}")
+a = by.get("aaaa1111", {})
+print("ok a bridged session has its claude.ai and claude:// links"
+      if a.get("links") == {"web": "https://claude.ai/code/session_01AbCdEf", "app": "claude://code/session_01AbCdEf"}
+      else f"bad links: {a.get('links')}")
+print("ok no link without a state file, or with a bridge id of the wrong shape"
+      if by.get("bbbb2222", {}).get("links") is None and by.get("cccc3333", {}).get("links") is None else f"bad links: {by}")
+print("ok nothing else from the state file is passed on" if "secret-account" not in json.dumps(got) else "bad the account id leaked")
+print("ok the start time is an ISO time" if a.get("started_at", "").endswith("Z") else f"bad started_at: {a.get('started_at')}")
+seen = {c["folder"]: c["env"] for c in calls()}
+print("ok each folder is listed with its own CLAUDE_CONFIG_DIR, and ~/.claude with none"
+      if seen.get(own, {}).get("CLAUDE_CONFIG_DIR") == own and default in seen and seen[default]["CLAUDE_CONFIG_DIR"] is None
+      else f"bad folders: {seen}")
+print("ok the hub's session variables are not passed to claude"
+      if all(e["CLAUDECODE"] is None and e["CLAUDE_CODE_EXECPATH"] is None and e["CLAUDE_CODE_SESSION_ID"] is None
+             for e in seen.values()) else f"bad env: {seen}")
+
+work = os.path.join(tmp, "bg-work")
+os.makedirs(work, exist_ok=True)
+json.dump({"mcpServers": {"tickets": {}, "approved": {}}}, open(os.path.join(work, ".mcp.json"), "w"))
+json.dump({"projects": {os.path.realpath(work): {"enabledMcpjsonServers": ["approved"]}}},
+          open(os.path.join(own, ".claude.json"), "w"))
+rc, got = bg("start", "--cwd", work, "--name", "ticket 7", "--model", "haiku", "--prompt", "look at ticket 7",
+             "--", "--permission-mode", "plan")
+c = calls()
+print("ok bg start runs claude --bg in the folder and returns its id"
+      if rc == 0 and got.get("id") == "abc12345" and got.get("name") == "ticket 7" and c and c[0]["cwd"] == os.path.realpath(work)
+      and c[0]["args"] == ["--bg", "--model", "haiku", "-n", "ticket 7", "--permission-mode", "plan", "look at ticket 7"]
+      else f"bad start: {rc} {got} {c}")
+print("ok it says when the folder's .mcp.json names a server not yet approved"
+      if "tickets" in got.get("notice", "") and "approved," not in got.get("notice", "") else f"bad notice: {got.get('notice')}")
+rc, got = bg("start", "--cwd", work, "--name", "x", "--prompt=--dangerously-skip-permissions")
+print("ok a prompt that reads as an option is refused" if rc == 1 and "may not start with '-'" in got.get("error", "") and not calls()
+      else f"bad option prompt: {rc} {got}")
+rc, got = bg("start", "--cwd", os.path.join(tmp, "nowhere"), "--name", "x", "--prompt", "p")
+print("ok a missing folder is refused" if rc == 1 and "no such folder" in got.get("error", "") else f"bad missing cwd: {rc} {got}")
+
+rc, got = bg("finish", "aaaa1111")
+c = calls()
+print("ok bg finish stops, then removes, in the folder that lists the session"
+      if rc == 0 and got.get("rm") == "removed aaaa1111" and [x["args"] for x in c[-2:]] == [["stop", "aaaa1111"], ["rm", "aaaa1111"]]
+      and c[-1]["folder"] == own else f"bad finish: {rc} {got} {c}")
+rc, got = bg("finish", "exited1", "--claude-dir", own)
+print("ok finishing a session that already exited still removes it" if rc == 0 and got.get("rm") == "removed exited1"
+      else f"bad finish of an exited session: {rc} {got}")
+rc, got = bg("stop", "exited1", "--claude-dir", own)
+print("ok bg stop of a session that is not running is an error" if rc == 1 and "not running" in got.get("error", "") else f"bad stop: {rc} {got}")
+rc, got = bg("rm", "--claude-dir", own, "--", "--force")
+print("ok an id that reads as an option is refused" if rc == 1 and "not a background session id" in got.get("error", "") else f"bad id: {rc} {got}")
+rc, got = bg("finish", "zzzz9999")
+print("ok an unknown id is an error naming the folders" if rc == 1 and "no background session zzzz9999" in got.get("error", "")
+      else f"bad unknown id: {rc} {got}")
+e2 = dict(env, TOOLWORKS_CLAUDE_BIN=os.path.join(tmp, "no-claude"))
+r = subprocess.run([hub, "bg", "list"], env=e2, capture_output=True, text=True)
+print("ok with no claude, bg list says where it looked" if "TOOLWORKS_CLAUDE_BIN" in json.loads(r.stdout)["problems"][0]
+      else f"bad no claude: {r.stdout}")
+
+# Through the runner, as the hub runs the Claude source: TOOLWORKS_HUB is set.
+os.environ.update(TOOLWORKS_CLAUDE_BIN=env["TOOLWORKS_CLAUDE_BIN"], FAKE_CLAUDE_LOG=log)
+claude = os.path.join(root, "sources", "claude")
+value = runner.call(claude, ["fetch", "background"], 30, "claude")[0] or {}
+rows = {(r["session"]["label"] if isinstance(r["session"], dict) else r["session"]): r for r in value.get("data", {}).get("rows", [])}
+print("ok the Claude source lists background sessions, the bridged one with App and Web links"
+      if rows.get("aaaa1111", {}).get("app") == {"link": "claude://code/session_01AbCdEf", "label": "open in app"}
+      and rows["aaaa1111"].get("web", {}).get("link") == "https://claude.ai/code/session_01AbCdEf"
+      and "app" not in rows.get("bbbb2222", {"app": 1}) else f"bad background widget: {value}")
+sess = (runner.call(claude, ["fetch", "sessions"], 30, "claude")[0] or {}).get("data", {})
+linked = {r["session"]["id"][:8]: r.get("web", {}).get("link") for r in sess.get("rows", [])}
+print("ok a recent session that is a bridged background session gets its links, and only it"
+      if linked.get("aaaaaaaa") == "https://claude.ai/code/session_01AbCdEf" and linked.get("bbbbbbbb") is None
+      and [c["id"] for c in sess.get("columns", [])][-2:] == ["app", "web"] else f"bad sessions links: {sess}")
+EOF
+tally < "$TMP/py5c.out"
 
 head_ "6. SERVER"
 INFO="$HOME_FIX/cache/agent-toolworks/server.json"
@@ -655,6 +785,21 @@ console.log(got === '{"tab":"#/source/code-search","full":true} {"tab":"#/source
   ? "ok a tab's hash plus /full is that tab on its own page" : "bad splitFull: " + got);
 EOF
   tally < "$TMP/node7d.out"
+  node - "$ROOT/web/app.js" > "$TMP/node7e.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const m = src.match(/^function linkCell\([\s\S]*?^}/m);
+const el = (tag, attrs, text) => ({ tag, attrs, text });
+const linkCell = new Function("el", m[0] + "\nreturn linkCell;")(el);
+const web = linkCell({ link: "https://claude.ai/code/session_01AB", label: "claude.ai" });
+const app = linkCell({ link: "claude://code/session_01AB", label: "open in app" });
+const js = linkCell({ link: "javascript:alert(1)", label: "x" });
+console.log(web.tag === "a" && web.attrs.target === "_blank" && web.attrs.rel === "noopener noreferrer" && web.text === "claude.ai"
+  ? "ok an https link cell opens in a new tab" : "bad https link cell: " + JSON.stringify(web));
+console.log(app.tag === "a" && app.attrs.href === "claude://code/session_01AB" && !app.attrs.target
+  ? "ok a claude:// link cell is a plain link, handed to the app" : "bad claude link cell: " + JSON.stringify(app));
+console.log(js === "x" ? "ok any other scheme is shown as text" : "bad javascript link cell: " + JSON.stringify(js));
+EOF
+  tally < "$TMP/node7e.out"
 else
   printf '  SKIP  the code-search view grouping: node is not installed\n'
 fi

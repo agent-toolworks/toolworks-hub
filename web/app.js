@@ -84,9 +84,21 @@ function refText(ref, text) {
     : el('span', { cls: 'ref', title: `${ref.ref} ${ref.id}` }, label);
 }
 
+// A link cell (contract 4): http(s) opens in a new tab; claude:// is handed to
+// the Claude app, and the page stays. Any other scheme is shown as text.
+function linkCell(v) {
+  const text = v.label || v.link;
+  let url;
+  try { url = new URL(v.link); } catch { return text; }
+  const outside = /^https?:$/.test(url.protocol);
+  if (!outside && url.protocol !== 'claude:') return text;
+  return el('a', { cls: 'link', href: url.href, title: url.href,
+    target: outside ? '_blank' : null, rel: outside ? 'noopener noreferrer' : null }, text);
+}
+
 function cell(v) {
   if (v == null) return el('span', { cls: 'muted' }, '—');
-  if (typeof v === 'object') return refText(v);
+  if (typeof v === 'object') return 'link' in v ? linkCell(v) : refText(v);
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return fmtNumber(v);
   return v;
@@ -405,7 +417,7 @@ function sourceCard(s) {
     // The hub's own page for this source, in place of its widgets.
     const frame = el('iframe', { cls: 'view', title: s.title,
       src: `${s.view}?source=${encodeURIComponent(s.key)}` });
-    frame.addEventListener('load', () => outsideLinksInNewTabs(frame));
+    frame.addEventListener('load', () => outsideLinks(frame));
     card.append(frame);
   } else if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
     // The stats, in one strip where the first of them was.
@@ -417,11 +429,13 @@ function sourceCard(s) {
 }
 
 // A link in a view to another site opens in a new browser tab, not in the
-// frame, where most sites refuse to show and the view would be lost. A view is
+// frame, where most sites refuse to show and the view would be lost. A
+// claude:// link is opened from the hub's own page, which hands it to the
+// Claude app and stays where it is; a frame may not be allowed to. A view is
 // on the hub's origin, so its clicks can be seen here; one the page handles
 // itself (preventDefault), a modified click and a link with a target are left
-// to the browser.
-function outsideLinksInNewTabs(frame) {
+// to the browser, and so is any other scheme.
+function outsideLinks(frame) {
   let doc;
   try { doc = frame.contentDocument; } catch { return; }  // the frame left the hub's origin
   if (!doc) return;
@@ -431,6 +445,11 @@ function outsideLinksInNewTabs(frame) {
     if (!a || a.target || typeof a.href !== 'string') return;
     let url;
     try { url = new URL(a.href); } catch { return; }
+    if (url.protocol === 'claude:') {
+      e.preventDefault();
+      location.href = url.href;
+      return;
+    }
     if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) return;
     e.preventDefault();
     window.open(url.href, '_blank', 'noopener,noreferrer');

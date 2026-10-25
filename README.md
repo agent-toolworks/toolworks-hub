@@ -10,7 +10,7 @@ with any subset of components installed, including none, and reads each tool's
 published contract rather than re-implementing the tool.
 
 **Status:** the first release's scope is built: the source contract (version
-3, which also reads 1 and 2) and its checker, the hub server with the built-in Claude Code source,
+4, which also reads 1 to 3) and its checker, the hub server with the built-in Claude Code source,
 session pages, and an example Grafana source. The page has a tab per source,
 and sources can be loaded from folders you name, such as a git repo of your
 team's sources. The token-save and code-search
@@ -71,6 +71,13 @@ code-search's `hub-source/` for every answer (see
 A session in any table links to that session's page, which gathers a section
 from every source that knows about it: the Claude Code source's transcript
 facts, token-save's model, branch and context peak, and so on.
+
+The Claude Code tab also lists background sessions (`claude --bg`) with their
+state. A session that Remote Control has bridged to claude.ai has an App link
+that opens it in the Claude app and a Web link that opens it on claude.ai, in
+that table and in Recent sessions. A source can start, list and finish
+background sessions of its own through `hub bg`
+([Background sessions](docs/contract.md#background-sessions)).
 
 ## Adding a page of links
 

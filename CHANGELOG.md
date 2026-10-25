@@ -15,6 +15,20 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **Background sessions.** `hub bg` lists Claude Code background sessions
+  (`claude --bg`) from every Claude Code folder, starts one in a folder, and
+  stops, removes or finishes one, printing JSON. A source runs it as
+  `$TOOLWORKS_HUB bg …` from `run call`, so every source that starts sessions
+  gets the same binary lookup, environment and links (#7).
+- **Open a session in the Claude app or on claude.ai.** The Claude Code tab
+  lists background sessions with their state, and a session bridged to
+  claude.ai by Remote Control has App and Web links there and in Recent
+  sessions.
+- **Source contract 4: a table cell can be a link**, `{"link", "label"}`, to
+  an `https://`, `http://` or `claude://` URL. The hub still reads sources
+  written for 1 to 3. A `claude://` link in a view is opened from the hub's
+  page, which hands it to the Claude app.
+
 ## 0.8.0 — 2026-10-23
 
 - **A view tab fills the window.** A tab that shows a source's view lays out

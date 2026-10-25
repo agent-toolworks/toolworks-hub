@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "widgets.schema.json",
-  "title": "Widget data shapes, contract 3",
+  "title": "Widget data shapes, contract 4",
   "description": "The shapes a source's fetch and show output may take. Referenced by fetch.schema.json, show.schema.json and manifest.schema.json.",
   "$defs": {
     "slug": {
@@ -29,10 +29,25 @@
         "label": {"type": "string", "minLength": 1}
       }
     },
+    "link": {
+      "description": "Contract 4. A link to a page outside the hub: https or http opens in a new browser tab; claude:// is handed to the Claude app.",
+      "type": "object",
+      "required": ["link"],
+      "additionalProperties": false,
+      "properties": {
+        "link": {
+          "title": "an https://, http:// or claude:// URL",
+          "type": "string",
+          "pattern": "^(https?|claude)://[^\\s]+$"
+        },
+        "label": {"type": "string", "minLength": 1}
+      }
+    },
     "cell": {
       "anyOf": [
         {"type": ["string", "number", "boolean", "null"]},
-        {"$ref": "#/$defs/ref"}
+        {"$ref": "#/$defs/ref"},
+        {"$ref": "#/$defs/link"}
       ]
     },
     "stat": {

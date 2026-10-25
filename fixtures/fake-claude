@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""A stand-in for Claude Code's `claude`, for `hub bg` (verify, section 5).
+
+Each run appends what it was given -- arguments, folder, the variables that
+matter -- to $FAKE_CLAUDE_LOG. `agents --json` prints fake-agents.json from
+the Claude Code folder it was pointed at ($CLAUDE_CONFIG_DIR, else
+~/.claude). `--bg` prints what Claude Code 2.1.310 prints. `stop` of the id
+`exited1` fails, as stopping a session that already exited does.
+"""
+import json
+import os
+import sys
+
+args = sys.argv[1:]
+folder = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+with open(os.environ["FAKE_CLAUDE_LOG"], "a") as f:
+    f.write(json.dumps({"args": args, "cwd": os.getcwd(), "folder": folder,
+                        "env": {k: os.environ.get(k) for k in ("CLAUDE_CONFIG_DIR", "CLAUDECODE",
+                                                              "CLAUDE_CODE_EXECPATH", "CLAUDE_CODE_SESSION_ID")}}) + "\n")
+if args[:2] == ["agents", "--json"]:
+    try:
+        print(open(os.path.join(folder, "fake-agents.json")).read())
+    except OSError:
+        print("[]")
+elif "--bg" in args:
+    name = args[args.index("-n") + 1] if "-n" in args else "unnamed"
+    print(f"backgrounded · abc12345 · {name}")
+elif args[:1] == ["stop"]:
+    if args[1] == "exited1":
+        print(f"error: {args[1]} is not running", file=sys.stderr)
+        sys.exit(1)
+    print(f"stopped {args[1]}")
+elif args[:1] == ["rm"]:
+    print(f"removed {args[1]}")
+else:
+    print(f"fake-claude: unexpected {args}", file=sys.stderr)
+    sys.exit(2)
