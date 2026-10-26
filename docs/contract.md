@@ -219,19 +219,27 @@ and builds the claude.ai links. Every command prints one JSON object, and on
 failure exits 1 with `{"error": "..."}`:
 
 ```sh
-"$TOOLWORKS_HUB" bg list
+"$TOOLWORKS_HUB" bg list [--all-kinds]
 "$TOOLWORKS_HUB" bg start --cwd DIR --name NAME --prompt TEXT [--model M] [--claude-dir D] [-- MORE CLAUDE ARGUMENTS]
+"$TOOLWORKS_HUB" bg resume SESSION_ID [--cwd DIR] [--claude-dir D]   # wake a stopped one
 "$TOOLWORKS_HUB" bg stop ID      # stop it; its transcript is kept
 "$TOOLWORKS_HUB" bg rm ID        # remove it, and its worktree
 "$TOOLWORKS_HUB" bg finish ID    # stop, then remove
 ```
 
 - **`list`** prints `{"claude", "sessions", "problems"}`. Each session is
-  `{"id", "session_id", "name", "cwd", "state", "status", "started_at",
-  "claude_dir", "links"}`, newest first, from every Claude Code folder the hub
-  reads (`claude agents --json --all` in each). `state` is Claude Code's:
-  `working`, `blocked` (it waits for a person, such as an approval) or
-  `done`. Any field but `id` and `claude_dir` may be null. `links` is
+  `{"id", "session_id", "kind", "name", "cwd", "state", "status", "pid",
+  "started_at", "claude_dir", "links"}`, newest first, from every Claude Code
+  folder the hub reads (`claude agents --json --all` in each). `kind` is
+  `background`. `state` is Claude Code's: `working`, `blocked` (it waits for a
+  person, such as an approval) or `done`. `pid` and `status` are there while
+  the session's process is alive, and null once it has stopped. Any field but
+  `id`, `kind` and `claude_dir` may be null.
+- **`list --all-kinds`** also lists the sessions people started in a
+  terminal, with `kind` `interactive`. Claude Code gives these no short id,
+  so their `id` is null, their `session_id` is their key (a row without one
+  is left out), and their `state` and `links` are null. `stop`, `rm`,
+  `finish` and `resume` are for background sessions only. `links` is
   `{"web": "https://claude.ai/code/session_…", "app": "claude://code/session_…"}`
   once Remote Control has bridged the session to claude.ai, and null before
   that or without Remote Control. A folder that cannot be listed is a line in
@@ -243,6 +251,16 @@ failure exits 1 with `{"error": "..."}`:
   approved, a `notice` says the session will wait, `blocked`, at the approval
   dialog: `claude --bg` reports that it started either way. A prompt may not
   begin with `-`.
+- **`resume`** wakes a stopped background session under its own id, with
+  the options it was started with: it runs `claude --bg --resume
+  SESSION_ID` and nothing else, in `--cwd`, else the folder `list` gives for
+  the session. It takes the full `session_id` that `list` prints; a short id
+  is refused, because Claude Code would start a copy of the session under a
+  new id. It prints `{"id", "name", "claude", "claude_dir", "cwd",
+  "session_id", "copy"}`, where `id` is the short id `stop`, `rm` and
+  `finish` take. The woken session is idle until a prompt reaches it. If
+  Claude Code started a copy after all, `copy` is true, `id` is the copy's,
+  and `session_id` is the copy's full id when Claude Code said it, else null.
 - **`stop`, `rm` and `finish`** act in the folder that lists the session,
   or in `--claude-dir`. `finish` removes a session that has already exited.
 

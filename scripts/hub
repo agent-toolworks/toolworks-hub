@@ -30,8 +30,9 @@ USAGE
   hub check-source <folder> [--entity TYPE=ID ...]
   hub serve [--port N] [--no-idle-exit]
   hub stop
-  hub bg list
+  hub bg list [--all-kinds]
   hub bg start --cwd DIR --name NAME --prompt TEXT [--model M] [--claude-dir D] [-- ARGS]
+  hub bg resume SESSION_ID [--cwd DIR] [--claude-dir D]
   hub bg stop|rm|finish ID [--claude-dir D]
 
 COMMANDS
@@ -49,8 +50,9 @@ COMMANDS
   stop          stop the running server.
   bg            Claude Code background sessions, as JSON, for a source's
                 run to use through $TOOLWORKS_HUB: list them with their
-                claude.ai links, start one in a folder, stop or remove one,
-                or finish one (stop, then remove). See docs/contract.md.
+                claude.ai links (--all-kinds: interactive ones too), start
+                one in a folder, wake a stopped one, stop or remove one, or
+                finish one (stop, then remove). See docs/contract.md.
 EOF
 }
 

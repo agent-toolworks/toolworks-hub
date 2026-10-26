@@ -4,7 +4,9 @@
 Each run appends what it was given -- arguments, folder, the variables that
 matter -- to $FAKE_CLAUDE_LOG. `agents --json` prints fake-agents.json from
 the Claude Code folder it was pointed at ($CLAUDE_CONFIG_DIR, else
-~/.claude). `--bg` prints what Claude Code 2.1.310 prints. `stop` of the id
+~/.claude). `--bg` prints what Claude Code 2.1.310 prints, and so does
+`--bg --resume ID`: it wakes the session when given nothing else, and says it
+started a copy otherwise (or always, with FAKE_CLAUDE_COPY set). `stop` of the id
 `exited1` fails, as stopping a session that already exited does.
 """
 import json
@@ -22,6 +24,14 @@ if args[:2] == ["agents", "--json"]:
         print(open(os.path.join(folder, "fake-agents.json")).read())
     except OSError:
         print("[]")
+elif args[:2] == ["--bg", "--resume"]:
+    if len(args) == 3 and not os.environ.get("FAKE_CLAUDE_COPY"):
+        print(f"note: woke session {args[2]} with its saved options (-n, --model).", file=sys.stderr)
+        print("backgrounded · res12345 · ticket 9 (idle — send a prompt to start)")
+    else:
+        print("note: started a copy of that conversation as 99999999-1111-4222-8333-444444444444. "
+              "To continue a session under its own id, pass its full session id", file=sys.stderr)
+        print("backgrounded · cpy12345 · ticket 9")
 elif "--bg" in args:
     name = args[args.index("-n") + 1] if "-n" in args else "unnamed"
     print(f"backgrounded · abc12345 · {name}")

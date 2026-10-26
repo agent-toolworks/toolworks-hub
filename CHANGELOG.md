@@ -22,6 +22,14 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
   hidden or shown, so a view can pause its polling; Refresh reloads only the
   view on screen. Up to six hidden views are kept, the least recently shown
   dropped first.
+- **`hub bg list` gives each row's `pid` and `kind`** (#8), so a source can
+  tell a live session from a stopped one, and `--all-kinds` adds the
+  sessions started in a terminal (`kind: "interactive"`, `id` null, keyed by
+  `session_id`). The default list is unchanged otherwise.
+- **`hub bg resume SESSION_ID`** (#9) wakes a stopped background session
+  under its own id: it runs `claude --bg --resume <full session id>` and
+  nothing else, refuses a short id (which would start a copy), and prints
+  `copy: true` with the new ids if Claude Code started a copy anyway.
 
 ## 0.9.0 — 2026-10-25
 

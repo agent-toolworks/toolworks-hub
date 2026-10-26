@@ -467,7 +467,8 @@ rows = [
      "cwd": "/work/app", "state": "working", "status": "busy", "pid": 1, "startedAt": 1792900000000},
     {"id": "bbbb2222", "kind": "background", "state": "blocked"},          # keys missing: read with .get
     {"id": "cccc3333", "kind": "background", "state": "done"},             # a state file with a bad id
-    {"kind": "interactive", "sessionId": "dddddddd-1111-4222-8333-444444444444", "status": "idle"},
+    {"kind": "interactive", "sessionId": "dddddddd-1111-4222-8333-444444444444", "status": "idle", "pid": 7},
+    {"kind": "interactive", "status": "idle", "pid": 8},                   # no session id: never listed
     {"kind": "background", "state": "done"},                               # no id: not listed
 ]
 json.dump(rows, open(os.path.join(own, "fake-agents.json"), "w"))
@@ -496,6 +497,15 @@ by = {s["id"]: s for s in got.get("sessions", [])}
 print("ok bg list: background rows with an id, from every folder; interactive and id-less rows left out"
       if rc == 0 and sorted(by) == ["aaaa1111", "bbbb2222", "cccc3333", "eeee5555"] else f"bad bg list: {rc} {got}")
 a = by.get("aaaa1111", {})
+print("ok each row has its kind, and its pid while the process is alive"
+      if a.get("pid") == 1 and a.get("kind") == "background" and by.get("bbbb2222", {}).get("pid", 0) is None
+      else f"bad pid: {by}")
+rc, got = bg("list", "--all-kinds")
+inter = [s for s in got.get("sessions", []) if s["kind"] == "interactive"]
+print("ok bg list --all-kinds adds interactive rows, keyed by session_id with id null; an id-less background row is still left out"
+      if rc == 0 and len(got["sessions"]) == 5 and len(inter) == 1 and inter[0]["id"] is None and inter[0]["links"] is None
+      and inter[0]["session_id"] == "dddddddd-1111-4222-8333-444444444444" and inter[0]["pid"] == 7 and inter[0]["status"] == "idle"
+      else f"bad --all-kinds: {rc} {got}")
 print("ok a bridged session has its claude.ai and claude:// links"
       if a.get("links") == {"web": "https://claude.ai/code/session_01AbCdEf", "app": "claude://code/session_01AbCdEf"}
       else f"bad links: {a.get('links')}")
@@ -530,6 +540,31 @@ print("ok a prompt that reads as an option is refused" if rc == 1 and "may not s
       else f"bad option prompt: {rc} {got}")
 rc, got = bg("start", "--cwd", os.path.join(tmp, "nowhere"), "--name", "x", "--prompt", "p")
 print("ok a missing folder is refused" if rc == 1 and "no such folder" in got.get("error", "") else f"bad missing cwd: {rc} {got}")
+
+# resume (#9): `claude --bg --resume <full id>` and nothing else, where the session ran.
+full = "aaaaaaaa-1111-4222-8333-444444444444"
+calls()
+rc, got = bg("resume", full, "--cwd", work)
+c = calls()
+r = [x for x in c if x["args"][:1] == ["--bg"]]
+print("ok bg resume runs claude --bg --resume with the full id and nothing else, in the folder"
+      if rc == 0 and r and r[0]["args"] == ["--bg", "--resume", full] and r[0]["cwd"] == os.path.realpath(work)
+      and r[0]["folder"] == own and got.get("id") == "res12345" and got.get("name") == "ticket 9"
+      and got.get("session_id") == full and got.get("copy") is False
+      else f"bad resume: {rc} {got} {c}")
+rc, got = bg("resume", "aaaa1111", "--cwd", work)
+print("ok a short id is refused, saying it would start a copy" if rc == 1 and "start a copy" in got.get("error", "") and not calls()
+      else f"bad short id: {rc} {got}")
+rc, got = bg("resume", full)
+print("ok without --cwd, resume needs a folder it can find: /work/app is not there"
+      if rc == 1 and "no such folder: /work/app" in got.get("error", "") else f"bad default cwd: {rc} {got}")
+env["FAKE_CLAUDE_COPY"] = "1"
+rc, got = bg("resume", full, "--cwd", work)
+del env["FAKE_CLAUDE_COPY"]
+print("ok when Claude Code starts a copy, resume says so, with the copy's ids"
+      if rc == 0 and got.get("copy") is True and got.get("id") == "cpy12345"
+      and got.get("session_id") == "99999999-1111-4222-8333-444444444444" else f"bad copy: {rc} {got}")
+calls()
 
 rc, got = bg("finish", "aaaa1111")
 c = calls()
