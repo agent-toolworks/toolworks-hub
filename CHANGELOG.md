@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.10.0 — 2026-10-26
+
 - **Views are kept across tab switches** (#10). A source's view is loaded
   once and hidden, not rebuilt, when another tab is shown, so coming back
   finds it as it was left (scroll, input, state), with no new first call.
