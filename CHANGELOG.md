@@ -15,6 +15,14 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **Views are kept across tab switches** (#10). A source's view is loaded
+  once and hidden, not rebuilt, when another tab is shown, so coming back
+  finds it as it was left (scroll, input, state), with no new first call.
+  The hub sends the view `{type: "hub:visibility", visible}` when it is
+  hidden or shown, so a view can pause its polling; Refresh reloads only the
+  view on screen. Up to six hidden views are kept, the least recently shown
+  dropped first.
+
 ## 0.9.0 — 2026-10-25
 
 - **Background sessions.** `hub bg` lists Claude Code background sessions

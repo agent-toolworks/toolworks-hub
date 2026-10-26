@@ -399,33 +399,100 @@ function statLine(item, title, p) {
     p.error && `could not read: ${p.error.problem}`, p.notice].filter(Boolean).join('\n');
 }
 
+// A source's bar, and what is wrong with it when it is not working.
+function sourceHead(s) {
+  const head = el('header', { cls: 'source-head' },
+    el('h2', {}, s.title),
+    el('span', { cls: `badge state state-${s.state}` }, STATE_LABEL[s.state] || s.state),
+    el('span', { cls: 'badge', title: s.plugin || s.dir }, s.origin),
+    s.network ? el('span', { cls: 'badge', title: 'This source makes network calls' }, 'network') : null,
+    s.version ? el('span', { cls: 'muted' }, s.version) : null);
+  if (s.state === 'working') return [head];
+  const note = el('div', { cls: `note note-${s.state}` }, el('p', {}, s.reason || STATE_LABEL[s.state]));
+  if (s.fix) note.append(el('p', {}, 'Fix: ', el('code', {}, s.fix)));
+  if (s.details && s.details.length) note.append(el('pre', {}, s.details.join('\n')));
+  return [head, note];
+}
+
+const working = s => s.state === 'working' || s.state === 'stale';
+const viewSrc = s => (working(s) && s.view ? `${s.view}?source=${encodeURIComponent(s.key)}` : null);
+
 function sourceCard(s) {
-  const card = el('section', { cls: 'source' },
-    el('header', { cls: 'source-head' },
-      el('h2', {}, s.title),
-      el('span', { cls: `badge state state-${s.state}` }, STATE_LABEL[s.state] || s.state),
-      el('span', { cls: 'badge', title: s.plugin || s.dir }, s.origin),
-      s.network ? el('span', { cls: 'badge', title: 'This source makes network calls' }, 'network') : null,
-      s.version ? el('span', { cls: 'muted' }, s.version) : null));
-  if (s.state !== 'working') {
-    const note = el('div', { cls: `note note-${s.state}` }, el('p', {}, s.reason || STATE_LABEL[s.state]));
-    if (s.fix) note.append(el('p', {}, 'Fix: ', el('code', {}, s.fix)));
-    if (s.details && s.details.length) note.append(el('pre', {}, s.details.join('\n')));
-    card.append(note);
-  }
-  if ((s.state === 'working' || s.state === 'stale') && s.view) {
-    // The hub's own page for this source, in place of its widgets.
-    const frame = el('iframe', { cls: 'view', title: s.title,
-      src: `${s.view}?source=${encodeURIComponent(s.key)}` });
-    frame.addEventListener('load', () => outsideLinks(frame));
-    card.append(frame);
-  } else if ((s.state === 'working' || s.state === 'stale') && s.widgets.length) {
+  const card = el('section', { cls: 'source' }, ...sourceHead(s));
+  if (working(s) && s.widgets.length) {
     // The stats, in one strip where the first of them was.
     const stats = s.widgets.filter(w => w.kind === 'stat');
     card.append(el('div', { cls: 'widgets' }, s.widgets.map(w =>
       w.kind !== 'stat' ? widgetCard(s, w) : w === stats[0] ? statStrip(s, stats) : null)));
   }
   return card;
+}
+
+// --- views, kept while another tab is shown ----------------------------------
+// A source's view (the hub's own page for it, in place of its widgets) is
+// built once and then hidden, not thrown away, when another tab is shown, so
+// coming back finds it as it was left. A hidden frame cannot tell it is hidden
+// (its document stays `visible`), so the hub tells it with a message,
+// {type: 'hub:visibility', visible}, each time that changes. A frame is
+// reloaded when it moves in the page, so a kept card is never moved: only the
+// rest of the panel is rebuilt around it.
+
+const KEEP_VIEWS = 6;     // hidden views kept at most; the least recently shown goes first
+const views = new Map();  // source key -> { card, frame, src }, least recently shown first
+let shownView = null;     // the key of the view on screen
+
+function keepView(s) {
+  const src = viewSrc(s);
+  const frame = el('iframe', { cls: 'view', title: s.title, src });
+  const v = { card: el('section', { cls: 'source kept-view' }, ...sourceHead(s), frame), frame, src };
+  frame.addEventListener('load', () => {
+    outsideLinks(frame);
+    // A message sent before the view loaded went to the blank page before it.
+    if (shownView !== s.key) tellView(v, false);
+  });
+  views.set(s.key, v);
+  return v;
+}
+
+function tellView(v, visible) {
+  try { v.frame.contentWindow.postMessage({ type: 'hub:visibility', visible }, location.origin); }
+  catch { /* the frame left the hub's origin */ }
+}
+
+// Shows one kept view (or none), hiding the one shown before.
+function showKept(key) {
+  if (key === shownView) return;
+  const was = views.get(shownView);
+  if (was) {
+    was.card.hidden = true;
+    tellView(was, false);
+  }
+  shownView = key;
+  const v = views.get(key);
+  if (!v) return;
+  v.card.hidden = false;
+  tellView(v, true);
+  views.delete(key);
+  views.set(key, v);
+}
+
+function dropView(key) {
+  views.get(key).card.remove();
+  views.delete(key);
+  if (shownView === key) shownView = null;
+}
+
+// Drops the views of sources that went away, stopped working or changed view.
+function pruneViews(sources) {
+  for (const key of [...views.keys()]) {
+    const s = sources.find(x => x.key === key);
+    if (!s || viewSrc(s) !== views.get(key).src) dropView(key);
+  }
+}
+
+function reloadView(v) {
+  try { v.frame.contentWindow.location.reload(); }
+  catch { v.frame.src = v.src; }
 }
 
 // A link in a view to another site opens in a new browser tab, not in the
@@ -617,6 +684,7 @@ function stopTimers() {
 
 async function loadEntity(type, id, refresh) {
   stopTimers();
+  showKept(null);
   document.body.classList.remove('full', 'with-view');
   document.title = 'Toolworks Hub';
   showView('entity');
@@ -678,8 +746,15 @@ async function loadTab(wanted, refresh) {
   document.title = full && title ? `${title} · Toolworks Hub` : 'Toolworks Hub';
 
   const panel = document.getElementById('panel');
+  pruneViews(sources);
+  // Everything in the panel but the kept views is built again for each tab.
+  const show = (key, node) => {
+    for (const kid of [...panel.children]) if (!kid.classList.contains('kept-view')) kid.remove();
+    showKept(key);
+    if (node) panel.append(node);
+  };
   if (hash === NOT_INSTALLED) {
-    panel.replaceChildren(el('section', { cls: 'source' },
+    show(null, el('section', { cls: 'source' },
       el('header', { cls: 'source-head' }, el('h2', {}, 'Not installed')),
       el('ul', { cls: 'available' }, st.available.map(a =>
         el('li', {}, el('strong', {}, a.name), a.description ? el('p', { cls: 'muted' }, a.description) : null,
@@ -688,14 +763,30 @@ async function loadTab(wanted, refresh) {
   }
   const page = linkPages.find(p => pageHref(p.name) === hash);
   if (page) {
-    panel.replaceChildren(linkPage(page));
+    show(null, linkPage(page));
     return;
   }
   const s = sources.find(x => sourceHref(x.key) === hash);
-  const card = s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.');
-  panel.replaceChildren(card);
-  // A tab showing a view lays out like a pop-out, keeping the header and tabs.
-  document.body.classList.toggle('with-view', Boolean(card.querySelector('iframe.view')));
+  if (s && viewSrc(s)) {
+    let v = views.get(s.key);
+    if (v) {
+      // Its bar is drawn again around the frame, which stays where it is.
+      for (const kid of [...v.card.children]) if (kid !== v.frame) kid.remove();
+      v.frame.before(...sourceHead(s));
+      // Refresh reloads the view on screen; the hidden ones are left alone.
+      if (refresh) reloadView(v);
+    } else {
+      v = keepView(s);
+      v.card.hidden = true;
+      panel.append(v.card);
+    }
+    show(s.key);
+    for (const key of [...views.keys()].slice(0, Math.max(0, views.size - 1 - KEEP_VIEWS))) dropView(key);
+    // A tab showing a view lays out like a pop-out, keeping the header and tabs.
+    document.body.classList.add('with-view');
+    return;
+  }
+  show(null, s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.'));
 }
 
 // A link page: sections of links from a JSON file (hub/pages.py). An http(s)

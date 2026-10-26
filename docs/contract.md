@@ -168,6 +168,31 @@ SAMEORIGIN` and a Content-Security-Policy of `default-src 'self'`, so a view
 loads nothing from the network: bundle its scripts, styles and fonts, and
 fetch remote data in `run call`.
 
+A view is loaded once and kept while other tabs are shown: switching away
+hides its frame and switching back shows the same page, as it was left, with
+nothing fetched again. The hub's Refresh reloads the view on screen and leaves
+the hidden ones alone. The hub keeps the six views shown most recently besides
+the one on screen, and drops the rest; a dropped view loads again when its tab
+is opened.
+
+A hidden view keeps running, and cannot tell it is hidden: its
+`document.visibilityState` stays `visible`. The hub tells it instead, with a
+message to the view's window each time it is hidden or shown:
+
+```js
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'hub:visibility') return;
+  if (e.data.visible) { refresh(); startPolling(); } else stopPolling();
+});
+```
+
+`visible` is `false` when another tab or an entity page is shown, and `true`
+when the view's tab is shown again. A view is visible when it first loads, so
+no message comes then, unless another tab was opened before it finished
+loading: it is then sent `visible: false` as soon as it loads. A view that polls should pause while hidden, and
+refresh once when it is shown. (When the browser tab itself is hidden,
+`document.hidden` is true in the view as usual.)
+
 A link in a view to another site (`http://` or `https://`, not the hub)
 opens in a new browser tab, so the view stays in its frame; the hub does that
 for every view, with no `target` needed. A link with its own `target`, a

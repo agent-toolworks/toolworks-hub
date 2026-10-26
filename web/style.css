@@ -179,6 +179,8 @@ iframe.view {
   display: block; width: 100%; height: calc(100vh - 210px); min-height: 480px; margin-top: 16px;
   border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
 }
+/* A kept view while another tab is shown (the layouts below would show it). */
+#panel > [hidden] { display: none !important; }
 /* A tab on its own page (#/.../full): the tab alone, filling the window. */
 body.full .top, body.full .tabs, body.full #problems { display: none; }
 body.full main { max-width: none; padding: 0; }
