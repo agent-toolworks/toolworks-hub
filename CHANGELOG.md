@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.11.0 — 2026-10-26
+
 - **The page is as wide as the window.** A tab's header is a bar across the
   top, under the tabs, instead of a card in a 1200-pixel column; the
   code-search view lost its 1400-pixel limit too.
