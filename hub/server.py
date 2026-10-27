@@ -49,6 +49,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import discovery  # noqa: E402
 import paths  # noqa: E402
+import sessions  # noqa: E402
 from registry import Registry  # noqa: E402
 
 IDLE_SECONDS = float(os.environ.get("HUB_IDLE_SECONDS", "600"))
@@ -73,6 +74,7 @@ VIEW_TYPES = {"html": "text/html; charset=utf-8", "js": "text/javascript; charse
 WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
 CALL = re.compile(r"^/api/sources/([^/]+)/call/([^/]+)$")
 ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
+SESSION = re.compile(r"^/api/sessions/([0-9a-f-]{36})(/transcript|/open)?$")
 HEADERS = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -182,8 +184,10 @@ class Handler(BaseHTTPRequestHandler):
         m = WIDGET.match(url.path)
         if m:
             key, widget_id = (urllib.parse.unquote(g) for g in m.groups())
-            code, payload = hub.registry.widget(key, widget_id, (query.get("query") or [None])[0])
-            return self._json(code, payload)
+            code, payload = hub.registry.widget(key, widget_id, (query.get("query") or [None])[0],
+                                                force=query.get("refresh") == ["1"])
+            # A session table gets each session's status, title and links.
+            return self._json(code, sessions.enrich(payload) if code == 200 else payload)
         m = CALL.match(url.path)
         if m:
             key, op = (urllib.parse.unquote(g) for g in m.groups())
@@ -193,7 +197,49 @@ class Handler(BaseHTTPRequestHandler):
             etype, eid = (urllib.parse.unquote(g) for g in m.groups())
             hub.registry.refresh()
             return self._json(*hub.registry.entity(etype, eid))
+        m = SESSION.match(url.path)
+        if m and m.group(2) != "/open":
+            return self._session(m.group(1), m.group(2), query)
         return self._json(404, {"error": "not found"})
+
+    def do_POST(self):
+        """Opening a session, the one thing the page asks the hub to do. It
+        takes JSON only: a page elsewhere cannot send that without the
+        browser asking this hub first, and there are no CORS headers."""
+        hub = self.server
+        hub.last_request = time.monotonic()
+        if self.headers.get("Host") not in hub.hosts:
+            return self._text(403, "This hub answers only on 127.0.0.1.\n")
+        if not self._authorised():
+            return self._text(403, "This browser has no token for this hub. Open it with `hub open`.\n")
+        url = urllib.parse.urlsplit(self.path)
+        m = SESSION.match(url.path)
+        if not m or m.group(2) != "/open":
+            return self._json(404, {"error": "not found"})
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return self._json(415, {"error": "send JSON"})
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            body = json.loads(self.rfile.read(min(length, 4096)) or b"{}")
+        except ValueError:
+            return self._json(400, {"error": "the body is not JSON"})
+        where = body.get("in") if isinstance(body, dict) else None
+        try:
+            return self._json(200, sessions.open_session(m.group(1), where))
+        except sessions.Failed as e:
+            return self._json(409, {"error": str(e), "command": e.command})
+
+    def _session(self, sid: str, part, query) -> None:
+        try:
+            if part == "/transcript":
+                before = (query.get("before") or [None])[0]
+                limit = (query.get("limit") or ["200"])[0]
+                if (before is not None and not before.isdigit()) or not limit.isdigit():
+                    return self._json(400, {"error": "before and limit are numbers"})
+                return self._json(200, sessions.transcript(sid, before and int(before), int(limit)))
+            return self._json(200, sessions.describe_all([sid]).get(sid) or {})
+        except sessions.Failed as e:
+            return self._json(404, {"error": str(e)})
 
     def _view_file(self, folder: str, rel: str) -> None:
         """A file of a view, read from inside its folder only: a symlink that

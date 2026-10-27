@@ -73,7 +73,9 @@ input {
 .quota-value { font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
 .quota-left { font-variant-numeric: tabular-nums; }
 .quota-left::before { content: "· "; }
-main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
+/* The page is as wide as the window: a tab's bar runs edge to edge under the
+   tabs, and what it shows sits below it, the page's gutter at each side. */
+main { padding: 0 0 48px; }
 
 .tabs {
   display: flex; gap: 4px; overflow-x: auto; scrollbar-width: thin;
@@ -99,17 +101,20 @@ main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
 .dot.state-working { background: var(--good); }
 .dot.state-stale, .dot.state-not_set_up, .dot.state-off { background: var(--warn); }
 .dot.state-incompatible, .dot.state-broken { background: var(--bad); }
+#problems { padding: 8px 24px 0; }
 #problems .note { margin: 0 0 8px; background: var(--card); }
-.source:first-child { margin-top: 0; }
 .muted { color: var(--muted); }
 .banner { padding: 10px 24px; background: var(--warn); color: #fff; }
 
-.source {
-  background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-  padding: 16px 20px; margin: 16px 0;
+.source { margin: 0; }
+.source-head {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 24px; border-bottom: 1px solid var(--line); background: var(--card);
 }
-.source-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .source-head h2 { margin: 0 8px 0 0; font-size: 17px; }
+.source > :not(.source-head):not(iframe) { margin-left: 24px; margin-right: 24px; }
+.source > .note { margin-top: 12px; }
+.source > .available, .source > p { margin-top: 12px; }
 .badge {
   font-size: 12px; padding: 1px 8px; border-radius: 999px;
   border: 1px solid var(--line); color: var(--muted);
@@ -127,7 +132,10 @@ main { padding: 16px 24px 48px; max-width: 1200px; margin: 0 auto; }
   display: grid; gap: 16px; margin-top: 16px;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
 }
-.widget { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0; }
+.widget {
+  border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; min-width: 0;
+  background: var(--card);
+}
 .widget-table, .widget-timeseries, .widget-search { grid-column: 1 / -1; }
 .widget h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; }
 .widget-meta { margin: 8px 0 0; font-size: 12px; }
@@ -184,10 +192,7 @@ iframe.view {
 /* A tab on its own page (#/.../full): the tab alone, filling the window. */
 body.full .top, body.full .tabs, body.full #problems { display: none; }
 body.full main { max-width: none; padding: 0; }
-body.full #panel > .source {
-  margin: 0; border: none; border-radius: 0; min-height: 100vh;
-  display: flex; flex-direction: column;
-}
+body.full #panel > .source { min-height: 100vh; display: flex; flex-direction: column; }
 body.full iframe.view { flex: 1; height: auto; min-height: 0; }
 /* A tab showing a view: the hub's header and tabs, the source's bar, then the view filling the
    rest of the window edge to edge, so the view scrolls on its own and the hub page never does. */
@@ -197,15 +202,8 @@ body.with-view main {
   flex: 1; min-height: 0; width: 100%; max-width: none; margin: 0; padding: 0;
   display: flex; flex-direction: column;
 }
-body.with-view #problems { padding: 8px 24px 0; }
 body.with-view #panel { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-body.with-view #panel > .source {
-  flex: 1; min-height: 0; margin: 0; padding: 0; border: none; border-radius: 0;
-  display: flex; flex-direction: column;
-}
-body.with-view #panel > .source > .source-head {
-  padding: 8px 24px; border-bottom: 1px solid var(--line); background: var(--card);
-}
+body.with-view #panel > .source { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 body.with-view #panel > .source > .note { margin: 8px 24px; }
 body.with-view iframe.view { flex: 1; height: auto; min-height: 0; margin: 0; border: none; border-radius: 0; }
 .chart { width: 100%; height: auto; display: block; }
@@ -237,19 +235,115 @@ body.with-view iframe.view { flex: 1; height: auto; min-height: 0; margin: 0; bo
 .legend li::before { content: "●"; margin-right: 4px; }
 
 @media (max-width: 600px) {
-  .top, main, .tabs { padding-left: 16px; padding-right: 16px; }
+  .top, .tabs, #problems, .source-head, .entity-bar, .entity-body { padding-left: 16px; padding-right: 16px; }
+  .source > :not(.source-head):not(iframe) { margin-left: 16px; margin-right: 16px; }
   .quota { margin-left: 0; width: 100%; order: 3; }
   .quota-track { width: auto; flex: 1; }
   .quota-item { flex: 1; }
-  .source { padding: 12px 14px; }
-  body.with-view #problems { padding-left: 16px; padding-right: 16px; }
-  body.with-view #panel > .source > .source-head { padding-left: 16px; padding-right: 16px; }
   body.with-view #panel > .source > .note { margin-left: 16px; margin-right: 16px; }
+  .session-bar, .refresh-controls { width: 100%; }
+  .refresh-when { width: 100%; }
   .widgets { grid-template-columns: 1fr; }
 }
 
-.entity-head h2 { margin: 4px 0 0; font-size: 20px; }
-.entity-head code { font-size: 15px; }
+/* An entity's page: its bar, its tabs, then the open tab. */
+.entity-bar { padding: 10px 24px; background: var(--card); border-bottom: 1px solid var(--line); }
+.entity-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.entity-line h2 { margin: 0; font-size: 19px; overflow-wrap: anywhere; }
+.entity-line code { font-size: 12px; color: var(--muted); }
+.entity-actions { margin-left: auto; }
+.entity-sub { margin: 4px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.back { text-decoration: none; margin-right: 6px; }
+.entity-tabs { padding: 0 24px; }
+.entity-body { padding: 16px 24px; }
+.entity-body > .widgets { margin-top: 0; }
+/* A page's lists of facts read as label and value, side by side. */
+.entity-body .widget-list { grid-column: 1 / -1; }
+.entity-body .list li { justify-content: flex-start; }
+.entity-body .list li > :first-child { flex: 0 0 200px; color: var(--muted); }
+.entity-body .list li .muted { text-align: left; color: var(--text); }
+.pad { padding: 16px 24px; margin: 0; }
+
+/* Buttons that are links, and small ones in a table row. */
+.btn {
+  display: inline-block; font: inherit; font-size: 14px; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 3px 12px; cursor: pointer;
+  text-decoration: none; line-height: 1.5; white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); color: var(--text); }
+.btn-small { font-size: 12px; padding: 1px 8px; }
+button:disabled, .btn:disabled { opacity: 0.45; cursor: not-allowed; border-color: var(--line); }
+.open-actions { display: inline-flex; gap: 4px; }
+
+/* A session's status. */
+.status {
+  display: inline-block; font-size: 12px; font-weight: 600; padding: 0 8px; border-radius: 999px;
+  border: 1px solid currentColor; white-space: nowrap;
+}
+.status-good { color: var(--good); }
+.status-warn { color: var(--warn); }
+.status-accent { color: var(--accent); }
+.status-muted { color: var(--muted); }
+.status-dot-good { background: var(--good); }
+.status-dot-warn { background: var(--warn); }
+.status-dot-accent { background: var(--accent); }
+.status-dot-muted { background: var(--muted); }
+
+/* A session table's bar: the status filter, then the refresh controls. */
+.session-bar { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; margin: 0 0 10px; }
+.chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 2px 10px;
+  border-radius: 999px; color: var(--muted);
+}
+.chip[aria-pressed="true"] { color: var(--text); border-color: var(--accent); font-weight: 600; }
+.chip-n { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
+.refresh-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; font-size: 13px; }
+.refresh-controls button { font-size: 13px; padding: 2px 10px; }
+.refresh-controls button[aria-pressed="true"] { border-color: var(--warn); color: var(--warn); }
+select {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px;
+}
+table.sessions td { vertical-align: middle; }
+.session-cell { white-space: normal; min-width: 220px; }
+.session-link { text-decoration: none; }
+.session-link:hover .session-name { text-decoration: underline; }
+.session-link .ref { font-size: 12px; margin-left: 6px; white-space: nowrap; }
+
+/* A note at the bottom of the window. */
+.toast {
+  position: fixed; right: 16px; bottom: 16px; z-index: 10; max-width: min(560px, calc(100vw - 32px));
+  display: flex; gap: 10px; align-items: flex-start; flex-wrap: wrap;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18); font-size: 14px;
+}
+.toast p { margin: 0; flex: 1; min-width: 200px; overflow-wrap: anywhere; }
+.toast-command { display: flex; gap: 6px; align-items: center; width: 100%; order: 3; }
+.toast-command code { flex: 1; overflow-wrap: anywhere; }
+
+/* A session's transcript. */
+.transcript-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; }
+.transcript-bar button { font-size: 13px; padding: 2px 10px; }
+.transcript-bar button:last-child { margin-left: auto; }
+.check { display: inline-flex; gap: 4px; align-items: center; }
+.check input { flex: none; }
+/* The transcript scrolls in its own box, so the bar and tabs stay in view. */
+.transcript {
+  list-style: none; margin: 0; padding: 0 4px 0 0;
+  max-height: calc(100vh - 250px); min-height: 240px; overflow-y: auto;
+}
+.entry { margin: 0 0 10px; }
+.msg { border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; background: var(--card); }
+.msg-user { border-left: 3px solid var(--accent); }
+.msg-assistant { border-left: 3px solid var(--good); }
+.msg-head { display: flex; gap: 8px; align-items: baseline; font-size: 13px; margin-bottom: 2px; }
+.msg-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.command code { font-size: 12px; color: var(--muted); }
+.tool-uses { list-style: none; margin: 0 0 0 14px; padding: 0 0 0 10px; border-left: 2px solid var(--line); font-size: 12px; }
+.tool-uses li { padding: 1px 0; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tool-name { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); margin-right: 8px; }
+.hide-tools .tools { display: none; }
 a { color: var(--accent); }
 a.ref { text-decoration: none; }
 a.ref:hover { text-decoration: underline; }

@@ -44,6 +44,16 @@ async function api(path) {
   return body;
 }
 
+// A POST of JSON, for the one thing the page asks the hub to do (open a
+// session). A failure carries the hub's `command`, to run by hand.
+async function post(path, body) {
+  const r = await fetch(path, { method: 'POST', credentials: 'same-origin', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const out = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+  if (!r.ok) throw Object.assign(new Error(out.error || `HTTP ${r.status}`), { command: out.command });
+  return out;
+}
+
 function ago(iso) {
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
   if (!isFinite(s)) return '';
@@ -289,17 +299,23 @@ function rangeBar(key, ranges, onPick) {
   return { bar, span: () => [Date.now() - rangeMs(current), Date.now()] };
 }
 
-function renderPayload(p, body, meta, range) {
-  body.replaceChildren();
+// What went wrong with a payload, or what its source wants said about it.
+function payloadNotes(p) {
+  const notes = [];
   if (p.error) {
     const when = p.error.at ? ` ${ago(p.error.at)}` : '';
     const err = el('div', { cls: 'error' }, el('p', {}, `Last fetch failed${when}: ${p.error.problem}`));
     if (p.error.details && p.error.details.length) {
       err.append(el('details', {}, el('summary', {}, 'Details'), el('pre', {}, p.error.details.join('\n'))));
     }
-    body.append(err);
+    notes.push(err);
   }
-  if (p.notice) body.append(el('p', { cls: 'notice' }, p.notice));
+  if (p.notice) notes.push(el('p', { cls: 'notice' }, p.notice));
+  return notes;
+}
+
+function renderPayload(p, body, meta, range) {
+  body.replaceChildren(...payloadNotes(p));
   if (p.data !== undefined && RENDER[p.kind]) body.append(RENDER[p.kind](p.data, range && range.span()));
   tickLeft();
   meta.textContent = [p.as_of && `as of ${fmtTime(p.as_of)}`, p.fetched_at && `fetched ${ago(p.fetched_at)}`]
@@ -334,13 +350,245 @@ function widgetCard(source, w) {
     ? rangeBar(`hub.range.${source.key}.${w.id}`, w.ranges, () => last && renderPayload(last, body, meta, range))
     : null;
   if (range) card.insertBefore(range.bar, body);
-  const load = async () => {
-    try { last = await api(url); renderPayload(last, body, meta, range); }
-    catch (err) { body.replaceChildren(el('p', { cls: 'error' }, err.message)); }
+  // A table of sessions (the hub adds `sessions` to it) is drawn as one, and
+  // refreshes when its reader chose, not on the source's own schedule.
+  let sessionView = null;
+  const load = async refresh => {
+    try {
+      last = await api(url + (refresh ? '?refresh=1' : ''));
+      if (last.sessions && !sessionView) {
+        sessionView = sessionTable(`${source.key}.${w.id}`, card, body, meta, () => load(true));
+      }
+      if (sessionView) sessionView.show(last);
+      else renderPayload(last, body, meta, range);
+    } catch (err) {
+      body.replaceChildren(el('p', { cls: 'error' }, err.message));
+      if (sessionView) sessionView.failed();
+    }
   };
   load();
-  timers.push(setInterval(() => { if (!document.hidden) load(); }, Math.max(10, source.refresh_seconds) * 1000));
+  timers.push(setInterval(() => { if (!document.hidden && !sessionView) load(); },
+    Math.max(10, source.refresh_seconds) * 1000));
   return card;
+}
+
+// --- session tables ----------------------------------------------------------
+// Any table whose rows link to sessions, from any source, is shown the same
+// way: the session's status, its title (a link to its page) and buttons to
+// open it in the Claude app, the browser (claude.ai) or a terminal, then the
+// source's own columns. Statuses filter the rows; the table refreshes every 5
+// or 10 minutes, or when asked, and the automatic refresh can be paused. The
+// reader's choices are kept in this browser: the refresh for every session
+// table, the filter for each.
+
+const REFRESH_MINUTES = [5, 10];
+const STATUS_ORDER = ['busy', 'working', 'blocked', 'idle', 'done', 'stopped', 'ended'];
+const STATUS_LEVEL = { busy: 'good', working: 'good', blocked: 'warn', idle: 'accent' };
+
+function stored(key, fallback) {
+  try { const v = localStorage.getItem(key); return v == null ? fallback : v; } catch { return fallback; }
+}
+
+function store(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* the choice lasts this page only */ }
+}
+
+const isSessionRef = v => v && typeof v === 'object' && v.ref === 'session' && typeof v.id === 'string';
+
+function statusBadge(status) {
+  if (!status) return el('span', { cls: 'muted' }, '—');
+  return el('span', { cls: `status status-${STATUS_LEVEL[status] || 'muted'}` }, status);
+}
+
+function statusRank(s) {
+  const i = STATUS_ORDER.indexOf(s);
+  return i < 0 ? STATUS_ORDER.length : i;
+}
+
+function sessionTable(key, card, body, meta, reload) {
+  const filterKey = `hub.sessions.filter.${key}`;
+  let filter = stored(filterKey, 'all');
+  let minutes = Number(stored('hub.sessions.refresh', '5'));
+  if (!REFRESH_MINUTES.includes(minutes)) minutes = REFRESH_MINUTES[0];
+  let paused = stored('hub.sessions.paused', '') === '1';
+  let last = null, at = null, timer = null;
+
+  const chips = el('div', { cls: 'chips', role: 'group', 'aria-label': 'Filter by status' });
+  const every = el('select', { 'aria-label': 'Refresh every' },
+    REFRESH_MINUTES.map(m => el('option', { value: m, selected: m === minutes }, `every ${m} min`)));
+  const pause = el('button', { type: 'button' });
+  const now = el('button', { type: 'button', title: 'Fetch the sessions again now' }, 'Refresh now');
+  const when = el('span', { cls: 'muted refresh-when' });
+  card.insertBefore(el('div', { cls: 'session-bar' }, chips,
+    el('div', { cls: 'refresh-controls' }, when, every, pause, now)), body);
+  meta.remove();
+
+  const drawControls = () => {
+    pause.textContent = paused ? 'Resume' : 'Pause';
+    pause.setAttribute('aria-pressed', paused ? 'true' : 'false');
+    pause.title = paused ? 'Refresh automatically again' : 'Stop refreshing automatically';
+    every.disabled = paused;
+    const next = at && !paused ? new Date(at.getTime() + minutes * 60000) : null;
+    when.textContent = [at && `updated ${fmtClock(at.toISOString())}`,
+      paused ? 'auto-refresh paused' : next && `next ${fmtClock(next.toISOString())}`].filter(Boolean).join(' · ');
+  };
+  const schedule = () => {
+    clearInterval(timer);
+    timer = paused ? null : setInterval(() => { if (!document.hidden) reload(); }, minutes * 60000);
+    if (timer) timers.push(timer);
+    drawControls();
+  };
+  every.addEventListener('change', () => {
+    minutes = Number(every.value);
+    store('hub.sessions.refresh', String(minutes));
+    schedule();
+  });
+  pause.addEventListener('click', () => {
+    paused = !paused;
+    store('hub.sessions.paused', paused ? '1' : '');
+    schedule();
+  });
+  now.addEventListener('click', async () => {
+    now.disabled = true;
+    now.textContent = 'Refreshing…';
+    await reload();
+    now.disabled = false;
+    now.textContent = 'Refresh now';
+    schedule();  // the next automatic refresh counts from this one
+  });
+
+  const statusOf = row => {
+    const v = Object.values(row).find(isSessionRef);
+    return v && last.sessions[v.id] ? last.sessions[v.id].status : null;
+  };
+  const drawChips = () => {
+    const counts = new Map();
+    for (const row of last.data.rows) {
+      const st = statusOf(row);
+      if (st) counts.set(st, (counts.get(st) || 0) + 1);
+    }
+    if (filter !== 'all' && !counts.has(filter)) counts.set(filter, 0);
+    const chip = (value, label, n) => {
+      const b = el('button', { type: 'button', cls: 'chip', 'aria-pressed': value === filter ? 'true' : 'false' },
+        label, el('span', { cls: 'chip-n' }, n));
+      if (value !== 'all') b.prepend(el('span', { cls: `dot status-dot-${STATUS_LEVEL[value] || 'muted'}` }));
+      b.addEventListener('click', () => {
+        filter = value;
+        store(filterKey, value);
+        draw();
+      });
+      return b;
+    };
+    chips.replaceChildren(chip('all', 'All', last.data.rows.length),
+      ...[...counts.keys()].sort((a, b) => statusRank(a) - statusRank(b) || a.localeCompare(b))
+        .map(st => chip(st, st, counts.get(st))));
+  };
+  const draw = () => {
+    body.replaceChildren(...payloadNotes(last));
+    if (last.data) {
+      drawChips();
+      const rows = last.data.rows.filter(r => filter === 'all' || statusOf(r) === filter);
+      body.append(rows.length ? sessionRows(last.data.columns, rows, last.sessions)
+        : el('p', { cls: 'muted' }, filter === 'all' ? 'Nothing to show.' : `No session is ${filter}.`));
+    }
+  };
+  schedule();
+  return {
+    show(p) {
+      last = p;
+      at = new Date();
+      draw();
+      drawControls();
+    },
+    failed() { drawControls(); },
+  };
+}
+
+function sessionRows(columns, rows, info) {
+  // The first column of session references becomes Status, Session and Open.
+  const sc = columns.find(c => rows.some(r => isSessionRef(r[c.id])));
+  const rest = columns.filter(c => c !== sc);
+  const head = el('tr', {}, el('th', {}, 'Status'), el('th', {}, 'Session'), el('th', {}, 'Open'),
+    rest.map(c => el('th', {}, c.unit ? `${c.title} (${c.unit})` : c.title)));
+  const body = rows.map(row => {
+    const ref = sc && isSessionRef(row[sc.id]) ? row[sc.id] : null;
+    const i = ref ? info[ref.id] : null;
+    return el('tr', {},
+      el('td', {}, statusBadge(i && i.status)),
+      el('td', { cls: 'session-cell' }, ref ? sessionLink(ref, i) : cell(sc && row[sc.id])),
+      el('td', {}, ref ? openButtons(ref.id, i) : el('span', { cls: 'muted' }, '—')),
+      rest.map(c => el('td', { cls: typeof row[c.id] === 'number' ? 'num' : null }, cell(row[c.id]))));
+  });
+  return el('div', { cls: 'table-wrap' },
+    el('table', { cls: 'sessions' }, el('thead', {}, head), el('tbody', {}, body)));
+}
+
+function sessionLink(ref, i) {
+  const short = ref.label || ref.id.slice(0, 8);
+  const kids = i && i.title ? [el('span', { cls: 'session-name' }, i.title), el('span', { cls: 'muted ref' }, short)]
+    : [el('span', { cls: 'ref' }, short)];
+  return linkable.has('session')
+    ? el('a', { cls: 'session-link', href: entityHref(ref), title: `session ${ref.id}` }, ...kids)
+    : el('span', { cls: 'session-link', title: `session ${ref.id}` }, ...kids);
+}
+
+// App, Browser and Terminal. A way that is not offered is a disabled button
+// that says why. A running session bridged to claude.ai opens in the app at
+// its claude:// link; any other is resumed there by the hub.
+function openButtons(sid, i, big) {
+  if (!i) return el('span', { cls: 'muted' }, '—');
+  const why = i.unavailable || {};
+  const cls = big ? 'btn' : 'btn btn-small';
+  const off = (label, reason) => el('button', { type: 'button', cls, disabled: true, title: reason }, label);
+  const act = (label, where, title) => {
+    const b = el('button', { type: 'button', cls, title }, label);
+    b.addEventListener('click', () => openSession(sid, where, b));
+    return b;
+  };
+  const appLink = typeof i.app_link === 'string' && i.app_link.startsWith('claude://') ? i.app_link : null;
+  const web = i.links && typeof i.links.web === 'string' && i.links.web.startsWith('https://') ? i.links.web : null;
+  return el('span', { cls: 'open-actions' },
+    why.app ? off('App', why.app)
+      : appLink ? el('a', { cls, href: appLink, title: 'Open it in the Claude app' }, 'App')
+        : act('App', 'app', 'Resume it in the Claude app'),
+    web ? el('a', { cls, href: web, target: '_blank', rel: 'noopener noreferrer', title: `Open ${web}` }, 'Browser')
+      : off('Browser', why.web || 'not connected to claude.ai'),
+    why.terminal ? off('Terminal', why.terminal)
+      : act('Terminal', 'terminal', i.pid && i.kind === 'background' ? 'Attach to it in a terminal' : 'Resume it in a terminal'));
+}
+
+async function openSession(sid, where, b) {
+  const label = b.textContent;
+  b.disabled = true;
+  b.textContent = 'Opening…';
+  try {
+    const r = await post(`/api/sessions/${encodeURIComponent(sid)}/open`, { in: where });
+    if (r.link && r.link.startsWith('claude://')) location.href = r.link;
+    toast(where === 'app' ? 'Opening it in the Claude app' : `Opened it in ${r.app || 'a terminal'}`);
+  } catch (err) {
+    toast(`Could not open it: ${err.message}`, err.command);
+  } finally {
+    b.disabled = false;
+    b.textContent = label;
+  }
+}
+
+// A note at the bottom of the window: gone after a few seconds, or, with a
+// command to run by hand, when closed.
+function toast(text, command) {
+  document.querySelectorAll('.toast').forEach(t => t.remove());
+  const close = el('button', { type: 'button', cls: 'btn btn-small', 'aria-label': 'Close' }, '×');
+  const box = el('div', { cls: `toast${command ? ' toast-sticky' : ''}`, role: 'status' },
+    el('p', {}, text), close);
+  if (command) {
+    const copy = el('button', { type: 'button', cls: 'btn btn-small' }, 'Copy');
+    copy.addEventListener('click', () => navigator.clipboard.writeText(command)
+      .then(() => { copy.textContent = 'Copied'; }, () => { copy.textContent = 'Select and copy'; }));
+    box.insertBefore(el('div', { cls: 'toast-command' }, el('code', {}, command), copy), close);
+  }
+  close.addEventListener('click', () => box.remove());
+  document.body.append(box);
+  if (!command) setTimeout(() => box.remove(), 6000);
 }
 
 // A source's stat widgets share one strip, a line each at most, like the top
@@ -682,43 +930,173 @@ function stopTimers() {
   timers = [];
 }
 
-async function loadEntity(type, id, refresh) {
+// --- an entity's page ----------------------------------------------------------
+// A bar with what the entity is (for a session: its title, status and the
+// buttons to open it), then a tab for each source that shows it -- the hub's
+// own Claude source first, as General -- and, for a session, its transcript.
+// The tab is in the address (#/entity/TYPE/ID/TAB), so Back goes to the last.
+
+const BUILTIN = 'claude';
+let entityShown = null;  // { type, id, panes: Map(tab -> {node, open}), bar }
+
+const entityTabHref = (type, id, tab) => `#/entity/${encodeURIComponent(type)}/${encodeURIComponent(id)}/${encodeURIComponent(tab)}`;
+
+async function loadEntity(type, id, tab, refresh) {
+  if (!refresh && entityShown && entityShown.type === type && entityShown.id === id) {
+    showEntityTab(tab);
+    return;
+  }
   stopTimers();
   showKept(null);
   document.body.classList.remove('full', 'with-view');
   document.title = 'Toolworks Hub';
   showView('entity');
+  entityShown = null;
   const view = document.getElementById('entity');
-  const back = () => el('p', {}, el('a', { href: remembered() || '#/' }, '← Back'));
-  view.replaceChildren(back(), el('p', { cls: 'muted' }, 'Loading…'));
+  const back = () => el('a', { cls: 'back', href: remembered() || '#/' }, '← Back');
+  view.replaceChildren(el('header', { cls: 'entity-bar' }, back()), el('p', { cls: 'muted pad' }, 'Loading…'));
   const st = await status(refresh);
   if (st) renderTabs(st, null);
-  let page;
+  let page, info = null;
   try {
-    page = await api(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(id)}`);
+    [page, info] = await Promise.all([
+      api(`/api/entities/${encodeURIComponent(type)}/${encodeURIComponent(id)}`),
+      type === 'session' ? api(`/api/sessions/${encodeURIComponent(id)}`).catch(() => null) : null,
+    ]);
   } catch (err) {
-    view.replaceChildren(back(), el('p', { cls: 'error' }, err.message));
+    view.replaceChildren(el('header', { cls: 'entity-bar' }, back()), el('p', { cls: 'error pad' }, err.message));
     return;
   }
-  const head = el('header', { cls: 'entity-head' }, back(),
-    el('h2', {}, page.title, ' ', el('code', {}, page.id)));
-  const sections = page.sections.map(sec => {
-    const card = el('section', { cls: 'source' }, el('header', { cls: 'source-head' }, el('h2', {}, sec.title)));
-    if (sec.error) {
-      card.append(el('div', { cls: 'note note-broken' }, el('p', {}, sec.error.problem),
-        sec.error.details && sec.error.details.length ? el('pre', {}, sec.error.details.join('\n')) : null));
-    } else {
-      card.append(el('div', { cls: 'widgets' }, sec.widgets.map(w => {
-        const body = el('div', { cls: 'widget-body' });
-        const meta = el('p', { cls: 'widget-meta muted' });
-        renderPayload(w, body, meta);
-        return el('article', { cls: `widget widget-${w.kind}` }, el('h3', {}, w.title), body, meta);
-      })));
-    }
-    return card;
+  const title = info && info.title;
+  document.title = `${title || `${page.title} ${id.slice(0, 8)}`} · Toolworks Hub`;
+  const bar = el('header', { cls: 'entity-bar' },
+    el('div', { cls: 'entity-line' }, back(),
+      info ? statusBadge(info.status) : null,
+      el('h2', {}, title || page.title),
+      el('code', { title: id }, id),
+      info ? el('span', { cls: 'entity-actions' }, openButtons(id, info, true)) : null),
+    info && info.cwd ? el('p', { cls: 'muted entity-sub' }, info.cwd,
+      info.claude_dir ? ` · ${info.claude_dir}` : '', info.short_id ? ` · background ${info.short_id}` : '') : null);
+
+  const sections = [...page.sections].sort((a, b) => (b.source === BUILTIN) - (a.source === BUILTIN));
+  const panes = new Map();
+  for (const sec of sections) {
+    const name = sec.source === BUILTIN ? 'general' : sec.source;
+    panes.set(name, { label: sec.source === BUILTIN ? 'General' : sec.title, node: sectionPane(sec) });
+  }
+  if (type === 'session') panes.set('transcript', { label: 'Transcript', node: null, make: () => transcriptPane(id) });
+  const nav = el('nav', { cls: 'tabs entity-tabs', 'aria-label': 'About this session' });
+  const body = el('div', { cls: 'entity-body' });
+  view.replaceChildren(bar, nav, body);
+  if (!panes.size) {
+    nav.hidden = true;
+    body.append(el('p', { cls: 'muted' }, `No installed source has anything to show for this ${page.type}.`));
+  }
+  entityShown = { type, id, panes, nav, body };
+  showEntityTab(tab);
+}
+
+function showEntityTab(tab) {
+  const { type, id, panes, nav, body } = entityShown;
+  if (!panes.size) return;
+  if (!panes.has(tab)) tab = panes.keys().next().value;
+  nav.replaceChildren(...[...panes].map(([name, p]) => el('a', {
+    cls: 'tab', href: entityTabHref(type, id, name), 'aria-current': name === tab ? 'page' : null,
+  }, p.label)));
+  const pane = panes.get(tab);
+  if (!pane.node) pane.node = pane.make();
+  body.replaceChildren(pane.node);
+  if (pane.shown) pane.shown();
+}
+
+function sectionPane(sec) {
+  if (sec.error) {
+    return el('div', { cls: 'note note-broken' }, el('p', {}, sec.error.problem),
+      sec.error.details && sec.error.details.length ? el('pre', {}, sec.error.details.join('\n')) : null);
+  }
+  return el('div', { cls: 'widgets' }, sec.widgets.map(w => {
+    const body = el('div', { cls: 'widget-body' });
+    const meta = el('p', { cls: 'widget-meta muted' });
+    renderPayload(w, body, meta);
+    return el('article', { cls: `widget widget-${w.kind}` }, el('h3', {}, w.title), body, meta);
+  }));
+}
+
+// The conversation: what was typed, what Claude answered and the tools it
+// used, oldest first, the last TRANSCRIPT_PAGE entries at a time.
+const TRANSCRIPT_PAGE = 200;
+
+function transcriptPane(id) {
+  const showTools = stored('hub.transcript.tools', '1') === '1';
+  const list = el('ol', { cls: `transcript${showTools ? '' : ' hide-tools'}` });
+  const earlier = el('button', { type: 'button', hidden: true }, 'Show earlier');
+  const latest = el('button', { type: 'button', title: 'Read the transcript again' }, 'Reload');
+  const tools = el('input', { type: 'checkbox', checked: showTools });
+  const count = el('span', { cls: 'muted' }, 'Loading…');
+  const bar = el('div', { cls: 'transcript-bar' }, count, earlier,
+    el('label', { cls: 'check' }, tools, 'Tool uses'), latest);
+  const pane = el('div', { cls: 'transcript-pane' }, bar, list);
+  let start = null;
+
+  tools.addEventListener('change', () => {
+    list.classList.toggle('hide-tools', !tools.checked);
+    store('hub.transcript.tools', tools.checked ? '1' : '0');
   });
-  view.replaceChildren(head, ...(sections.length ? sections
-    : [el('p', { cls: 'muted' }, `No installed source has anything to show for this ${page.type}.`)]));
+  const load = async before => {
+    const q = `limit=${TRANSCRIPT_PAGE}${before != null ? `&before=${before}` : ''}`;
+    try {
+      const r = await api(`/api/sessions/${encodeURIComponent(id)}/transcript?${q}`);
+      const items = transcriptItems(r.entries);
+      if (before == null) list.replaceChildren(...items);
+      else list.prepend(...items);
+      start = r.start;
+      earlier.hidden = start === 0;
+      count.textContent = `${(r.total - start).toLocaleString()} of ${r.total.toLocaleString()} entries`;
+      count.title = r.path;
+      if (!r.total) list.replaceChildren(el('li', { cls: 'muted' }, 'Nothing was said in this session yet.'));
+      return r;
+    } catch (err) {
+      count.textContent = '';
+      list.replaceChildren(el('li', { cls: 'error' }, err.message));
+      return null;
+    }
+  };
+  earlier.addEventListener('click', async () => {
+    const height = list.scrollHeight;
+    await load(start);
+    list.scrollTop += list.scrollHeight - height;  // stay where the reader was
+  });
+  const toEnd = () => { list.scrollTop = list.scrollHeight; };
+  latest.addEventListener('click', () => load(null).then(toEnd));
+  load(null).then(toEnd);
+  return pane;
+}
+
+function transcriptItems(entries) {
+  const items = [];
+  let tools = null;  // consecutive tool uses share one item
+  for (const e of entries) {
+    if (e.kind === 'tool') {
+      if (!tools) {
+        tools = el('ul', { cls: 'tool-uses' });
+        items.push(el('li', { cls: 'entry tools' }, tools));
+      }
+      tools.append(el('li', { title: e.at ? fmtTime(e.at) : null },
+        el('span', { cls: 'tool-name' }, e.tool), e.text ? el('span', { cls: 'tool-text' }, e.text) : null));
+      continue;
+    }
+    tools = null;
+    if (e.kind === 'command') {
+      items.push(el('li', { cls: 'entry command' }, el('code', {}, e.text)));
+      continue;
+    }
+    const who = e.role === 'user' ? 'You' : 'Claude';
+    items.push(el('li', { cls: `entry msg msg-${e.role === 'user' ? 'user' : 'assistant'}` },
+      el('div', { cls: 'msg-head' }, el('strong', {}, who),
+        e.at ? el('span', { cls: 'muted', title: fmtTime(e.at) }, fmtClock(e.at)) : null),
+      el('div', { cls: 'msg-text' }, e.text)));
+  }
+  return items;
 }
 
 async function loadTab(wanted, refresh) {
@@ -808,8 +1186,9 @@ function linkPage(p) {
 }
 
 function route(refresh) {
-  const m = location.hash.match(/^#\/entity\/([^/]+)\/([^/]+)$/);
-  if (m) return loadEntity(decodeURIComponent(m[1]), decodeURIComponent(m[2]), refresh);
+  const m = location.hash.match(/^#\/entity\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
+  if (m) return loadEntity(decodeURIComponent(m[1]), decodeURIComponent(m[2]), m[3] ? decodeURIComponent(m[3]) : null, refresh);
+  entityShown = null;
   return loadTab(location.hash, refresh);
 }
 

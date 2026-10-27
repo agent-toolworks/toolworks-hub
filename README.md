@@ -1,11 +1,13 @@
 # toolworks-hub
 
-A local, read-only web app that shows Claude Code data alongside whichever
+A local web app that shows Claude Code data alongside whichever
 agent-toolworks components are installed: token-save usage, code-search fleet
 search, and repo-fleet workspaces. You can also add your own sources, such as a
 page fed by Grafana.
 
-It runs as you, with no admin rights, and listens on localhost only. It works
+It runs as you, with no admin rights, and listens on localhost only. It
+changes nothing; the one thing it does on request is open a Claude Code
+session in the app or a terminal (below). It works
 with any subset of components installed, including none, and reads each tool's
 published contract rather than re-implementing the tool.
 
@@ -51,8 +53,8 @@ It finds sources in four places: the built-in Claude Code source, a
 
 It reads every Claude Code folder on the machine, not only its own
 (`$CLAUDE_CONFIG_DIR`, else `~/.claude`): each `~/.claude*` folder that holds a
-`projects/` folder, such as `~/.claude-work` for a second account. Sessions and
-plugins then carry an Account column (the account's email, else the folder), a
+`projects/` folder, such as `~/.claude-work` for a second account. Plugins
+then carry an Account column (the account's email, else the folder), a
 plugin installed for either account has its source, and token-save shows every
 account's quota. `{"claude_dirs": ["~/.claude-work"]}` in `hub.json` names the
 folders instead, and `{"claude_dirs": []}` reads only the hub's own.
@@ -68,16 +70,24 @@ lives here, in [`web/views/code-search`](web/views/code-search), and asks
 code-search's `hub-source/` for every answer (see
 [Views](docs/contract.md#views)).
 
-A session in any table links to that session's page, which gathers a section
-from every source that knows about it: the Claude Code source's transcript
-facts, token-save's model, branch and context peak, and so on.
+Every table of sessions, from any source (Claude Code's Sessions,
+token-save's Recent sessions), looks the same: each session's status (busy,
+idle, a background session's state, or ended), its title, and App, Browser
+and Terminal buttons, then the source's own columns. Buttons above it filter
+by status, and it refreshes every 5 or 10 minutes, can be paused, or be
+refreshed now. App resumes the session in the Claude app, Browser opens the
+claude.ai session it is bridged to, and Terminal opens a Terminal window
+running `claude --resume` in its folder (`"terminal": "iTerm"` in `hub.json`
+for iTerm). Claude Code's table holds every live session, background ones
+included, and the 20 most recently active.
 
-The Claude Code tab also lists background sessions (`claude --bg`) with their
-state. A session that Remote Control has bridged to claude.ai has an App link
-that opens it in the Claude app and a Web link that opens it on claude.ai, in
-that table and in Recent sessions. A source can start, list and finish
-background sessions of its own through `hub bg`
-([Background sessions](docs/contract.md#background-sessions)).
+A session's title links to its page: a bar with its status and the same
+buttons, then a tab per source that knows about it (General for the Claude
+Code source's facts, token-save's model, branch and context peak, and so on)
+and a Transcript tab with the conversation. See
+[Session tables](docs/contract.md#session-tables-and-the-session-page). A
+source can start, list and finish background sessions of its own through
+`hub bg` ([Background sessions](docs/contract.md#background-sessions)).
 
 ## Adding a page of links
 

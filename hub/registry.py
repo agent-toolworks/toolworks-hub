@@ -135,8 +135,9 @@ class Registry:
         section["widgets"] = value["widgets"]
         return section
 
-    def widget(self, key: str, widget_id: str, query=None):
-        """(HTTP status, payload) for one widget of one source."""
+    def widget(self, key: str, widget_id: str, query=None, force: bool = False):
+        """(HTTP status, payload) for one widget of one source; force fetches
+        it again however fresh the last fetch is."""
         with self._lock:
             s = self._sources.get(key)
         if s is None:
@@ -156,7 +157,7 @@ class Registry:
         lock = self._widget_locks.setdefault((key, widget_id), threading.Lock())
         with lock:  # one fetch at a time per widget; the rest wait and share it
             entry = self._cache.get((key, widget_id))
-            if entry and entry.get("good") and time.monotonic() - entry["good_at"] < ttl \
+            if not force and entry and entry.get("good") and time.monotonic() - entry["good_at"] < ttl \
                     and not entry.get("error"):
                 return 200, self._payload(entry)
             result = self._fetch(s, w, [])

@@ -70,13 +70,13 @@ def source(template, dest, name):
     write_json(manifest, m)
 
 
-def transcript(path, sid, branch, mtime):
+def transcript(path, sid, branch, mtime, cwd="/work/app", extra=()):
     records = [
         {"type": "mode", "mode": "normal", "sessionId": sid},
-        {"type": "user", "cwd": "/work/app", "gitBranch": branch, "version": "2.1.0",
+        {"type": "user", "cwd": cwd, "gitBranch": branch, "version": "2.1.0",
          "timestamp": "2026-10-17T08:00:00.000Z", "sessionId": sid, "message": {"role": "user", "content": "hi"}},
         {"type": "assistant", "sessionId": sid, "message": {"role": "assistant", "content": "hello"}},
-    ]
+    ] + [dict(r, sessionId=sid) for r in extra]
     with open(path, "w") as f:
         for r in records:
             f.write(json.dumps(r) + "\n")
@@ -119,7 +119,25 @@ def main(root):
     os.makedirs(os.path.join(projects, SID_RECENT))  # Claude Code keeps a folder per session too
     now = time.time()
     transcript(os.path.join(projects, f"{SID_RECENT}.jsonl"), SID_RECENT, "main", now)
-    transcript(os.path.join(projects, f"{SID_OLD}.jsonl"), SID_OLD, "fix", now - 3 * 24 * 3600)
+    # The older session has what the session page reads: titles, a claude.ai
+    # bridge, tool uses, and records the transcript leaves out. It ran in a
+    # folder that exists, so it can be resumed.
+    transcript(os.path.join(projects, f"{SID_OLD}.jsonl"), SID_OLD, "fix", now - 3 * 24 * 3600, cwd=root, extra=[
+        {"type": "ai-title", "aiTitle": "Fix the build"},
+        {"type": "bridge-session", "bridgeSessionId": "cse_01OldBridge", "ownerAccountUuid": "secret-owner"},
+        {"type": "user", "timestamp": "2026-10-17T08:01:00.000Z",
+         "message": {"role": "user", "content": "<command-name>/clear</command-name>"}},
+        {"type": "user", "isMeta": True, "message": {"role": "user", "content": "injected context"}},
+        {"type": "user", "message": {"role": "user", "content": "<local-command-stdout>done</local-command-stdout>"}},
+        {"type": "assistant", "timestamp": "2026-10-17T08:02:00.000Z", "message": {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "secret thoughts"},
+            {"type": "text", "text": "Running the tests."},
+            {"type": "tool_use", "name": "Bash", "input": {"command": "make test", "description": "Run the tests"}}]}},
+        {"type": "user", "message": {"role": "user", "content": [
+            {"type": "tool_result", "content": "tool output text"}]}},
+        {"type": "assistant", "isSidechain": True, "message": {"role": "assistant", "content": "subagent words"}},
+        {"type": "custom-title", "customTitle": "Build fix"},
+    ])
     with open(os.path.join(projects, "notes.jsonl"), "w") as f:
         f.write("{}\n")
 

@@ -34,7 +34,7 @@ button { font: inherit; border-radius: 6px; padding: 5px 12px; cursor: pointer;
          border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
 button.link { border: none; background: none; color: var(--accent); padding: 0; text-align: left; }
-.page { padding: 18px 24px 48px; max-width: 1400px; margin: 0 auto; }
+.page { padding: 18px 24px 48px; }
 .muted { color: var(--muted); }
 
 /* search */

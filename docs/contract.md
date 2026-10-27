@@ -329,6 +329,50 @@ order. A source that prints an empty `widgets` list is left out; one whose
 `show` fails or breaks the contract keeps its section, showing the error, so a
 missing section never reads as "nothing to say".
 
+The entity's page is a bar naming the entity, then a tab per section: the
+hub's own Claude source first, as **General**, then the others by their
+title. The open tab is in the address (`#/entity/session/<id>/<tab>`).
+
+### Session tables and the session page
+
+A table whose rows carry a `session` reference is a **session table**, from
+whichever source. The hub adds what it knows about each session to the
+payload (a `sessions` map, by ID) and draws every session table the same way,
+so a source prints only its own columns:
+
+- **Status**: the live state Claude Code gives (`claude agents --json --all`):
+  `busy` or `idle` for a session open in a terminal or the app, a background
+  session's state (`working`, `blocked`, `done`, `stopped`…), and `ended` for
+  a session no process holds.
+- **Session**: its title -- the transcript's last `custom-title` (a
+  `/rename`), else `ai-title`, else `agent-name` -- linking to its page, with
+  the short ID beside it. The first column of session references becomes this
+  one.
+- **Open**: *App*, *Browser* and *Terminal*. A running session bridged to
+  claude.ai opens in the app at its `claude://` link; any other is resumed
+  there with `claude --desktop --resume ID`. *Browser* is the claude.ai
+  session it is bridged to (its transcript's `bridge-session` record).
+  *Terminal* opens a terminal window running `claude --resume ID` in the
+  session's folder (`claude attach SHORT_ID` for a live background session),
+  in Terminal, or iTerm with `"terminal": "iTerm"` in `hub.json`. A way that
+  is not offered -- a session already open in a terminal, one not bridged to
+  claude.ai -- is a disabled button that says why.
+
+Above the table: a button per status, with its count, and **All**, to filter
+the rows; and the refresh, every 5 or 10 minutes, which can be paused, and
+**Refresh now**, which fetches the widget again whatever its
+`refresh_seconds`. The reader's choices are kept in their browser.
+
+A session's page adds a **Transcript** tab: what was typed and answered, and
+each tool Claude used with a short summary of what it was used on, oldest
+first, 200 entries at a time. Thinking, tool results, subagents and Claude
+Code's own records are left out.
+
+The page reaches these through `GET /api/sessions/<id>` (one session's
+status, title and links), `GET /api/sessions/<id>/transcript?before=N&limit=N`
+and `POST /api/sessions/<id>/open` with `{"in": "app" | "terminal"}` (JSON
+only). They are the hub's, not part of the source contract.
+
 [`entities.json`](../contract/entities.json) defines each type and the rule
 its IDs follow. Version 1 defines `session`: the Claude Code session ID, which
 is token-save's `session_id` and the transcript's file name under

@@ -15,6 +15,30 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **The page is as wide as the window.** A tab's header is a bar across the
+  top, under the tabs, instead of a card in a 1200-pixel column; the
+  code-search view lost its 1400-pixel limit too.
+- **Session tables.** Any table whose rows link to sessions -- Claude Code's
+  Sessions and token-save's Recent sessions alike -- shows each session's
+  status, its title (linking to its page) and App, Browser and Terminal
+  buttons, before the source's own columns. Buttons per status filter the
+  rows, with All; the table refreshes every 5 or 10 minutes, can be paused,
+  and has Refresh now. See "Session tables and the session page" in
+  docs/contract.md.
+- **Opening a session**: App resumes it in the Claude app (`claude --desktop
+  --resume`), or opens a running bridged one at its `claude://` link;
+  Browser opens its claude.ai session; Terminal opens a Terminal window
+  running `claude --resume` in its folder (`claude attach` for a live
+  background session). `"terminal": "iTerm"` in hub.json uses iTerm.
+- **The session page** has a bar with the session's title, status and the
+  same buttons, then tabs: General (the Claude source), token-save, and
+  Transcript (the conversation's text and tool uses, 200 entries at a time).
+- **Claude Code's Sessions table** lists every live session as well as the
+  20 most recently active, and has no Account, App or Web column; the
+  separate Background sessions table is gone, its sessions now in this one
+  with their status. The session page's General tab is one list of facts,
+  the message count among them.
+
 ## 0.10.0 — 2026-10-26
 
 - **Views are kept across tab switches** (#10). A source's view is loaded

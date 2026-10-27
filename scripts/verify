@@ -378,8 +378,9 @@ print("ok token-save 0.6.0 is stale, with 0.25.0 in the cache" if ts.get("status
       else f"bad token-save row: {ts}")
 print("ok agent-teller is not listed" if "agent-teller" not in plugins else "bad agent-teller is listed")
 w = {x["id"]: x for x in load("claude-show.json")["widgets"]}
-print("ok show counts the session's messages" if w.get("messages", {}).get("data", {}).get("value") == 2
-      else f"bad show: {w}")
+facts = {i["text"]: i["detail"] for i in w.get("details", {}).get("data", {}).get("items", [])}
+print("ok show is one list of facts, the session's message count among them"
+      if list(w) == ["details"] and facts.get("Messages", "").startswith("2 ") else f"bad show: {w}")
 EOF
 tally < "$TMP/py5.out"
 
@@ -415,10 +416,9 @@ print("ok a plugin installed in both folders is found once, from the hub's own f
 claude = os.path.join(root, "sources", "claude")
 call = lambda *a: runner.call(claude, list(a), 30, "claude")[0] or {}
 sess = call("fetch", "sessions")["data"] if call("fetch", "sessions") else {}
-who = {r["session"]["id"][:8]: r.get("account") for r in sess.get("rows", [])}
-print("ok a source receives TOOLWORKS_CLAUDE_DIRS: sessions from both folders, with an Account column"
-      if [c["id"] for c in sess.get("columns", [])][:2] == ["session", "account"]
-      and who == {"cccccccc": "work@example.com", "aaaaaaaa": "home@example.com", "bbbbbbbb": "home@example.com"}
+who = sorted(r["session"]["id"][:8] for r in sess.get("rows", []))
+print("ok a source receives TOOLWORKS_CLAUDE_DIRS: sessions from both folders, with no Account column"
+      if "account" not in [c["id"] for c in sess.get("columns", [])] and who == ["aaaaaaaa", "bbbbbbbb", "cccccccc"]
       else f"bad sessions with two folders: {sess}")
 today = call("fetch", "sessions-today").get("data", {}).get("value")
 print("ok sessions today counts both folders" if today == 2 else f"bad sessions today: {today}")
@@ -589,23 +589,96 @@ print("ok with no claude, bg list says where it looked" if "TOOLWORKS_CLAUDE_BIN
 # Through the runner, as the hub runs the Claude source: TOOLWORKS_HUB is set.
 os.environ.update(TOOLWORKS_CLAUDE_BIN=env["TOOLWORKS_CLAUDE_BIN"], FAKE_CLAUDE_LOG=log)
 claude = os.path.join(root, "sources", "claude")
-value = runner.call(claude, ["fetch", "background"], 30, "claude")[0] or {}
-rows = {(r["session"]["label"] if isinstance(r["session"], dict) else r["session"]): r for r in value.get("data", {}).get("rows", [])}
-print("ok the Claude source lists background sessions, the bridged one with App and Web links"
-      if rows.get("aaaa1111", {}).get("app") == {"link": "claude://code/session_01AbCdEf", "label": "open in app"}
-      and rows["aaaa1111"].get("web", {}).get("link") == "https://claude.ai/code/session_01AbCdEf"
-      and "app" not in rows.get("bbbb2222", {"app": 1}) else f"bad background widget: {value}")
 sess = (runner.call(claude, ["fetch", "sessions"], 30, "claude")[0] or {}).get("data", {})
-linked = {r["session"]["id"][:8]: r.get("web", {}).get("link") for r in sess.get("rows", [])}
-print("ok a recent session that is a bridged background session gets its links, and only it"
-      if linked.get("aaaaaaaa") == "https://claude.ai/code/session_01AbCdEf" and linked.get("bbbbbbbb") is None
-      and [c["id"] for c in sess.get("columns", [])][-2:] == ["app", "web"] else f"bad sessions links: {sess}")
+ids = [r["session"]["id"][:8] for r in sess.get("rows", [])]
+print("ok the Sessions table holds the recent sessions and every live one, even with nothing written yet"
+      if sorted(ids) == ["aaaaaaaa", "bbbbbbbb", "dddddddd"] else f"bad sessions: {ids}")
+print("ok its columns are the source's own: no Account, App or Web (the hub adds Status, Title and Open)"
+      if [c["id"] for c in sess.get("columns", [])] == ["session", "project", "branch", "last-active", "size"]
+      else f"bad sessions columns: {sess.get('columns')}")
 EOF
 tally < "$TMP/py5c.out"
 
+# Session tables and the session page: what the hub adds about each session,
+# opening one, and its transcript, on the fake claude and the fixture's
+# transcripts (the older one has titles, a bridge and tool uses).
+in_home env TOOLWORKS_CLAUDE_BIN="$ROOT/fixtures/fake-claude" FAKE_CLAUDE_LOG="$TMP/fake-claude.log" \
+  python3 - "$ROOT" "$HOME_FIX" > "$TMP/py5d.out" 2>&1 <<'EOF'
+import json, os, sys
+root, fix = sys.argv[1:3]
+sys.path.insert(0, os.path.join(root, "hub"))
+import sessions
+RECENT, OLD = "aaaaaaaa-1111-4222-8333-444444444444", "bbbbbbbb-1111-4222-8333-444444444444"
+LIVE = "dddddddd-1111-4222-8333-444444444444"
+own = os.path.join(fix, "claude")
+d = sessions.describe_all([RECENT, OLD, LIVE, "not-a-session"])
+r, o, l = d.get(RECENT, {}), d.get(OLD, {}), d.get(LIVE, {})
+print("ok only session IDs are described" if sorted(d) == [RECENT, OLD, LIVE] else f"bad ids: {sorted(d)}")
+print("ok a live background session has its state, short id and the links of its job"
+      if r.get("status") == "busy" and r.get("kind") == "background" and r.get("short_id") == "aaaa1111"
+      and r.get("app_link") == "claude://code/session_01AbCdEf" and r.get("unavailable") == {} else f"bad live: {r}")
+print("ok a session no process holds has ended; its title is its last custom-title, over ai-title"
+      if o.get("status") == "ended" and o.get("title") == "Build fix" and o.get("cwd") == fix else f"bad ended: {o}")
+print("ok an ended session's claude.ai bridge is its Browser link, but the app resumes it rather than open the bridge"
+      if (o.get("links") or {}).get("web") == "https://claude.ai/code/session_01OldBridge" and o.get("app_link") is None
+      and o.get("unavailable") == {} else f"bad ended links: {o}")
+print("ok nothing else from the bridge record is passed on" if "secret-owner" not in json.dumps(d) else "bad the owner leaked")
+print("ok a live session open in a terminal, and not bridged, cannot be opened again; each button says why"
+      if l.get("status") == "idle" and set(l.get("unavailable", {})) == {"app", "terminal", "web"}
+      and "folder it ran in" in l["unavailable"]["terminal"] else f"bad interactive: {l}")
+cmd = sessions.terminal_command(OLD, o)
+print("ok Terminal resumes an ended session in its folder, on its Claude Code folder"
+      if cmd.startswith(f"cd {fix} && CLAUDE_CONFIG_DIR={own} ") and cmd.endswith(f" --resume {OLD}") else f"bad command: {cmd}")
+cmd = sessions.terminal_command(RECENT, r)
+print("ok a live background session is attached to, not resumed" if cmd.endswith(" attach aaaa1111") else f"bad attach: {cmd}")
+try:
+    sessions.open_session(LIVE, "terminal")
+    print("bad a session open in a terminal was opened again")
+except sessions.Failed as e:
+    print("ok opening one that is not offered is refused, saying why" if "folder it ran in" in str(e) else f"bad refusal: {e}")
+try:
+    sessions.open_session(OLD, "printer")
+    print("bad an unknown place was accepted")
+except sessions.Failed:
+    print("ok a session opens in the app or a terminal only")
+print("ok a running bridged session opens in the app at its claude:// link"
+      if sessions.open_session(RECENT, "app") == {"opened": "app", "link": "claude://code/session_01AbCdEf"} else "bad app link")
+open(os.environ["FAKE_CLAUDE_LOG"], "w").close()
+got = sessions.open_session(OLD, "app")
+calls = [json.loads(x) for x in open(os.environ["FAKE_CLAUDE_LOG"])]
+desk = [c for c in calls if c["args"][:1] == ["--desktop"]]
+print("ok any other is resumed in the app with claude --desktop --resume, on a terminal of its own, in its folder"
+      if got.get("opened") == "app" and "Opening session" in got.get("said", "") and desk
+      and desk[0]["args"] == ["--desktop", "--resume", OLD] and desk[0]["cwd"] == os.path.realpath(fix)
+      and desk[0]["env"]["CLAUDE_CONFIG_DIR"] == own else f"bad desktop: {got} {desk}")
+
+t = sessions.transcript(OLD)
+kinds = [(e["role"], e["kind"], e.get("tool"), e["text"]) for e in t["entries"]]
+print("ok the transcript: typed text, commands, answers and tool uses with their summary, oldest first"
+      if kinds == [("user", "text", None, "hi"), ("assistant", "text", None, "hello"), ("user", "command", None, "/clear"),
+                   ("assistant", "text", None, "Running the tests."), ("assistant", "tool", "Bash", "Run the tests")]
+      else f"bad transcript: {kinds}")
+text = json.dumps(t)
+print("ok thinking, tool results, subagents and Claude Code's own records are left out"
+      if not any(x in text for x in ("secret thoughts", "tool output", "subagent words", "injected", "local-command"))
+      else f"bad left in: {text}")
+page = sessions.transcript(OLD, before=4, limit=2)
+print("ok the transcript is read a page at a time, back from the end"
+      if page["total"] == 5 and page["start"] == 2 and [e["text"] for e in page["entries"]] == ["/clear", "Running the tests."]
+      else f"bad page: {page}")
+table = {"kind": "table", "data": {"columns": [{"id": "s", "title": "S"}],
+         "rows": [{"s": {"ref": "session", "id": OLD}}, {"s": "plain"}]}}
+plain = {"kind": "table", "data": {"columns": [], "rows": [{"a": 1}]}}
+e = sessions.enrich(table)
+print("ok a table of sessions gets each one's status, title and links; another table is left as it is"
+      if list(e.get("sessions", {})) == [OLD] and e["data"] == table["data"] and sessions.enrich(plain) == plain
+      else f"bad enrich: {e}")
+EOF
+tally < "$TMP/py5d.out"
+
 head_ "6. SERVER"
 INFO="$HOME_FIX/cache/agent-toolworks/server.json"
-in_home env HUB_IDLE_SECONDS=4 python3 "$ROOT/hub/server.py" serve > "$TMP/serve.log" 2>&1 &
+in_home env HUB_IDLE_SECONDS=4 TOOLWORKS_CLAUDE_BIN="$ROOT/fixtures/fake-claude" FAKE_CLAUDE_LOG="$TMP/fake-claude.log" python3 "$ROOT/hub/server.py" serve > "$TMP/serve.log" 2>&1 &
 SERVER=$!
 for _ in $(seq 50); do [[ -s $INFO ]] && break; sleep 0.1; done
 if [[ ! -s $INFO ]]; then
@@ -693,7 +766,27 @@ else
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/token-save-fixture/call/echo") == 404 ]] && ok "a source with no page is never called" || bad "call without a view"
   [[ $(code "$BASE/api/sources/code-search/call/echo") == 403 ]] && ok "a call needs the token" || bad "call without token"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/nope/widgets/x") == 404 ]] && ok "an unknown source is a 404" || bad "unknown source"
-  [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 501 ]] && ok "only GET is served" || bad "POST was served"
+  [[ $(code -X POST -H "Cookie: $JAR" "$BASE/api/status") == 404 ]] && ok "a POST is served only to open a session" || bad "POST was served"
+  # Session tables and the session page, through the server.
+  OLD=bbbbbbbb-1111-4222-8333-444444444444
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sources/claude/widgets/sessions") == 200 ]] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["sessions"][sys.argv[2]]["title"] == "Build fix", d' "$TMP/body" "$OLD" \
+    && ok "a session table comes with each session's status, title and links" || bad "session table" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sessions/$OLD") == 200 ]] && grep -q '"status": "ended"' "$TMP/body" \
+    && ok "one session's status and title" || bad "session info" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sessions/$OLD/transcript?limit=2") == 200 ]] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["total"] == 5 and len(d["entries"]) == 2, d' "$TMP/body" \
+    && ok "a session's transcript, a page at a time" || bad "transcript" "$(head -c 400 "$TMP/body")"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sessions/$OLD/transcript?before=x") == 400 ]] && ok "transcript paging takes numbers" || bad "transcript paging"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sessions/eeeeeeee-1111-4222-8333-444444444444/transcript") == 404 ]] \
+    && ok "a session with no transcript is a 404" || bad "missing transcript"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/sessions/$OLD/open") == 404 ]] && ok "opening a session is a POST, never a GET" || bad "GET open"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: text/plain" --data '{"in":"terminal"}' "$BASE/api/sessions/$OLD/open") == 415 ]] \
+    && ok "opening a session takes JSON only, which no other site's page can send unasked" || bad "open without JSON"
+  [[ $(code -X POST -H "Content-Type: application/json" --data '{"in":"terminal"}' "$BASE/api/sessions/$OLD/open") == 403 ]] \
+    && ok "opening a session needs the token" || bad "open without token"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"in":"printer"}' "$BASE/api/sessions/$OLD/open") == 409 ]] \
+    && grep -q "app or terminal" "$TMP/body" && ok "a refusal to open says why" || bad "open refusal" "$(head -c 400 "$TMP/body")"
 
   [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/session/$RECENT") == 200 ]] || bad "entity page: HTTP error" "$(head -c 400 "$TMP/body")"
   python3 - "$TMP/body" > "$TMP/py6.out" 2>&1 <<'EOF'
@@ -703,7 +796,8 @@ secs = {s["source"]: s for s in page["sections"]}
 print("ok the session page has a section from each source that shows sessions"
       if list(secs) == ["claude", "token-save-fixture", "bad-show"] else f"bad sections: {list(secs)}")
 c = {w["id"]: w for w in secs.get("claude", {}).get("widgets", [])}
-print("ok the Claude section counts the session's messages" if c.get("messages", {}).get("data", {}).get("value") == 2
+facts = {i["text"]: i["detail"] for i in c.get("details", {}).get("data", {}).get("items", [])}
+print("ok the Claude section counts the session's messages" if facts.get("Messages", "").startswith("2 ")
       else f"bad Claude section: {secs.get('claude')}")
 b = secs.get("bad-show", {})
 print("ok a source whose show breaks the contract keeps its section, as an error"

@@ -7,8 +7,7 @@
   "refresh_seconds": 60,
   "widgets": [
     {"id": "sessions-today", "kind": "stat", "title": "Active sessions"},
-    {"id": "sessions", "kind": "table", "title": "Recent sessions"},
-    {"id": "background", "kind": "table", "title": "Background sessions"},
+    {"id": "sessions", "kind": "table", "title": "Sessions"},
     {"id": "plugins", "kind": "table", "title": "Installed plugins"}
   ],
   "shows": ["session"]
