@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.12.0 — 2026-11-02
+
 - **`tab_order` in `hub.json` sets the order of the tabs** (#11), sources and
   link pages alike, and so which tab a new visitor opens:
   `{"tab_order": ["guide", "tickets"]}`. Tabs it does not name follow in the
