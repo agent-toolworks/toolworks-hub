@@ -24,6 +24,8 @@ What it holds, and what the hub must make of it:
   hub.json    source_dirs: team/ (one source per subfolder, a
               .git and a file beside them), solo/ (itself a
               source), and a folder that does not exist        2 folder sources, 1 problem
+              tab_order: runbooks, team-config, solo, nope     runbooks and team-config first;
+                                                                solo stays at the end; nope a problem
               team-config's settings in source-config/          working, read from there
   pages       pages/: alerts (good, with a #/ link), broken
               (a javascript: URL and an unknown field);
@@ -161,6 +163,8 @@ def main(root):
     write_json(os.path.join(root, "config", "agent-toolworks", "hub.json"),
                {"source_dirs": ["../../team", os.path.join(root, "solo"), "~/missing"],
                 "page_dirs": ["../../team-pages"],
+                # A page, a working source, one that is not set up, and a name that is neither.
+                "tab_order": ["runbooks", "team-config", "solo", "nope"],
                 "port": 0})  # a free port: verify must not collide with a hub that is running
     link = lambda t, u: {"title": t, "url": u}
     pages = os.path.join(root, "config", "agent-toolworks", "pages")

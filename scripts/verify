@@ -257,9 +257,15 @@ RECENT=aaaaaaaa-1111-4222-8333-444444444444
 
 head_ "4. DISCOVERY"
 in_home bounded 30 "$HUB" status --json > "$TMP/status.json" 2>&1 || bad "hub status --json failed" "$(cat "$TMP/status.json")"
-python3 - "$TMP/status.json" > "$TMP/py4.out" 2>&1 <<'EOF'
-import json, sys
+in_home bounded 30 "$HUB" status > "$TMP/status.txt" 2>&1
+python3 - "$TMP/status.json" "$TMP/status.txt" > "$TMP/py4.out" 2>&1 <<'EOF'
+import json, re, sys
 st = json.load(open(sys.argv[1]))
+text = open(sys.argv[2]).read()
+listed = re.findall(r"^  (\S+) +(?:built-in|plugin|user|folder) ", text, re.M)
+print("ok hub status lists the tabs, and the sources in the tabs' order"
+      if "TABS\n  runbooks, team-config, claude, " in text and listed[:2] == ["team-config", "claude"] and listed[-1] == "solo"
+      else f"bad hub status text: {text[:600]!r}")
 got = {s["key"]: s for s in st["sources"]}
 want = {
     "claude": ("built-in", "working", ""),
@@ -300,7 +306,14 @@ print("ok a page that breaks the format is a problem naming every fault, not a t
 print("ok a page name already taken is a problem, and the first one keeps it"
       if any("team-pages/alerts.json: the page name 'alerts' is already used" in p for p in probs) and pages["alerts"]["title"] == "Alerts"
       else f"bad duplicate page: {probs}")
-print(f"ok nothing else is a problem" if len(probs) == 3 else f"bad problems: {probs}")
+print("ok a tab_order name that is no source or page is a problem"
+      if sum("tab_order names nope, which is no source or page" in p for p in probs) == 1 else f"bad problems: {probs}")
+tabs = [t.get("source") or t.get("page") for t in st["tabs"]]
+print("ok tab_order's page and source come first, then working sources, the rest, and link pages"
+      if tabs == ["runbooks", "team-config", "claude", "code-search", "token-save-fixture", "bad-show", "own-page",
+                  "from-future", "claude~2", "user-broken", "solo", "alerts"]
+      else f"bad tabs: {st['tabs']}")
+print(f"ok nothing else is a problem" if len(probs) == 4 else f"bad problems: {probs}")
 names = [a["name"] for a in st["available"]]
 print("ok only fleet-workspace is listed as not installed" if names == ["fleet-workspace"]
       else f"bad not installed: {names}")
@@ -344,6 +357,15 @@ for text, want, label in [
     dirs, problems = discovery.source_dirs()
     print(f"ok hub.json {label}: a problem" if dirs == [] and any(want in p for p in problems)
           else f"bad hub.json {label}: {dirs} {problems}")
+for text, want, label in [
+    ('{"tab_order": "guide"}', ([], 1), "tab_order not a list"),
+    ('{"tab_order": ["guide", ""]}', ([], 1), "an empty tab_order name"),
+    ('{"tab_order": ["guide", "kb", "guide"]}', (["guide", "kb"], 0), "a name listed twice"),
+]:
+    open(paths.hub_config_path(), "w").write(text)
+    names, problems = discovery.tab_order_setting()
+    print(f"ok hub.json {label}" if (names, len(problems)) == want and all("tab_order must be a list" in p for p in problems)
+          else f"bad hub.json {label}: {names} {problems}")
 os.remove(paths.hub_config_path())
 print("ok no hub.json: no folders, no problem" if discovery.source_dirs() == ([], []) else f"bad no hub.json: {discovery.source_dirs()}")
 EOF
@@ -929,6 +951,18 @@ console.log(app.tag === "a" && app.attrs.href === "claude://code/session_01AB" &
 console.log(js === "x" ? "ok any other scheme is shown as text" : "bad javascript link cell: " + JSON.stringify(js));
 EOF
   tally < "$TMP/node7e.out"
+  node - "$ROOT/web/app.js" > "$TMP/node7f.out" 2>&1 <<'EOF'
+const src = require("fs").readFileSync(process.argv[2], "utf8");
+const grab = name => (src.match(new RegExp("^(const " + name + " = .*|function " + name + "\\([\\s\\S]*?^})", "m")) || [""])[0];
+const orderedTabs = new Function([grab("sourceHref"), grab("pageHref"), grab("orderedTabs")].join("\n") + "\nreturn orderedTabs;")();
+const st = { sources: [{ key: "claude", title: "Claude", state: "working" }, { key: "guide", title: "Guide", state: "working" }],
+  pages: [{ name: "guide", title: "Guide page" }],
+  tabs: [{ page: "guide" }, { source: "guide" }, { source: "gone" }, { source: "claude" }] };
+const got = orderedTabs(st).map(t => t.href + "=" + t.title).join(" ");
+console.log(got === "#/page/guide=Guide page #/source/guide=Guide #/source/claude=Claude"
+  ? "ok the tabs follow the server's order, a source and a page of one name apart" : "bad orderedTabs: " + got);
+EOF
+  tally < "$TMP/node7f.out"
 else
   printf '  SKIP  the code-search view grouping: node is not installed\n'
 fi

@@ -83,4 +83,6 @@ Keep the files in a git repo and have each person list its folder in
 `page_dirs` sits beside `source_dirs` in the same file. The folders are read
 in the order listed, after `~/.config/agent-toolworks/pages/`; when two files
 have the same name, the first one found is used and the other is reported.
+Pages' tabs come after the sources'; `tab_order` in `hub.json` moves the ones
+it names to the front (see [hub.json](contract.md#hubjson)).
 A `git pull` is the update.

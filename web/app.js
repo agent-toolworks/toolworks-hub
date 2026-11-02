@@ -901,10 +901,19 @@ function remembered() {
   try { return localStorage.getItem('hub.tab'); } catch { return null; }
 }
 
-function orderedSources(st) {
-  // Working sources first, so the first tab has something to show.
-  const order = s => (s.state === 'working' || s.state === 'stale' ? 0 : 1);
-  return [...st.sources].sort((a, b) => order(a) - order(b));
+function orderedTabs(st) {
+  // The server's order: hub.json's tab_order, then working sources, the rest, link pages.
+  const bySource = new Map(st.sources.map(s => [s.key, s]));
+  const byPage = new Map((st.pages || []).map(p => [p.name, p]));
+  // A hub started before tabs existed: working sources, the rest, link pages.
+  const working = s => s.state === 'working' || s.state === 'stale';
+  const tabs = st.tabs || [...st.sources.filter(working), ...st.sources.filter(s => !working(s))]
+    .map(s => ({ source: s.key })).concat((st.pages || []).map(p => ({ page: p.name })));
+  return tabs.map(t => {
+    const s = bySource.get(t.source), p = byPage.get(t.page);
+    return s ? { href: sourceHref(s.key), title: s.title, state: s.state }
+      : p ? { href: pageHref(p.name), title: p.title } : null;
+  }).filter(Boolean);
 }
 
 function renderTabs(st, current) {
@@ -912,8 +921,7 @@ function renderTabs(st, current) {
     cls: 'tab', href, 'aria-current': href === current ? 'page' : null,
     title: state ? STATE_LABEL[state] || state : null,
   }, state ? el('span', { cls: `dot state-${state}`, 'aria-hidden': 'true' }) : null, label), popout(href, label));
-  const tabs = orderedSources(st).map(s => tab(sourceHref(s.key), s.title, s.state));
-  for (const p of st.pages || []) tabs.push(tab(pageHref(p.name), p.title));
+  const tabs = orderedTabs(st).map(t => tab(t.href, t.title, t.state));
   if (st.available.length) tabs.push(tab(NOT_INSTALLED, `Not installed (${st.available.length})`));
   document.getElementById('tabs').replaceChildren(...tabs);
   const active = document.querySelector('.tab[aria-current]');
@@ -1104,15 +1112,15 @@ async function loadTab(wanted, refresh) {
   showView('panel');
   const st = await status(refresh);
   if (!st) return;
-  const sources = orderedSources(st);
+  const sources = st.sources;
   const linkPages = st.pages || [];
-  const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0
-    : sources.some(s => sourceHref(s.key) === h) || linkPages.some(p => pageHref(p.name) === h));
+  const ordered = orderedTabs(st);
+  const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0 : ordered.some(t => t.href === h));
   // A tab on its own page is not remembered: the hub's own page keeps its tab.
   const { tab, full } = splitFull(wanted);
   // An unknown or stale tab (a source that went away) falls back to the first.
   const hash = [tab, remembered()].find(valid)
-    || (sources.length ? sourceHref(sources[0].key) : NOT_INSTALLED);
+    || (ordered.length ? ordered[0].href : NOT_INSTALLED);
   const shown = full ? hash + FULL : hash;
   if (shown !== location.hash) history.replaceState(null, '', shown);
   if (!full) remember(hash);

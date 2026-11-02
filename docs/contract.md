@@ -58,6 +58,21 @@ skipped). `~` is expanded, and a relative path is taken from the folder
 that is not JSON is shown as a problem at the top of the page, and the rest
 of the hub carries on.
 
+**Tab order.** The tabs are working sources first, then the other sources,
+then link pages, each in the order found, and Not installed last. `tab_order`
+lists source and page names to put first, in its order:
+
+```json
+{"tab_order": ["guide", "tickets", "reviews"]}
+```
+
+A name is a source's name, else a page's. A source that is not working stays
+with the others at the end even when listed, so the first tab has something
+to show. A name that matches no source or page is a problem, like any other
+in `hub.json`. With no tab in the URL and none remembered, the page opens the
+first tab. `/api/status` gives the order as `tabs`, a list of
+`{"source": key}` and `{"page": name}`, and `hub status` prints it.
+
 ## source.json
 
 [`manifest.schema.json`](../contract/manifest.schema.json)

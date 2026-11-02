@@ -28,6 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import contract  # noqa: E402
 import discovery  # noqa: E402
 import pages  # noqa: E402
+import paths  # noqa: E402
 import runner  # noqa: E402
 import sources  # noqa: E402
 from version import RELEASES, VERSION  # noqa: E402
@@ -46,6 +47,30 @@ def view_for(s):
     return f"/views/{s.name}/index.html" if os.path.isfile(os.path.join(VIEWS, s.name, "index.html")) else None
 
 
+def order_tabs(loaded: list, page_list: list, names: list):
+    """(the tabs in the order the page shows them, problems). Without a
+    tab_order: working sources first, so the first tab has something to show,
+    then the rest, then link pages, each in the order found. The names
+    tab_order lists come first, in its order: a source by its key, else a page
+    by its name. A source that is not working stays with the others at the
+    end, listed or not. A name that is neither is a problem."""
+    first = [{"source": s.key} for s in loaded if s.state in sources.FETCHABLE]
+    rest = [{"source": s.key} for s in loaded if s.state not in sources.FETCHABLE]
+    tabs = first + rest + [{"page": p["name"]} for p in page_list]
+    keys = {s.key for s in loaded}
+    names_of = {p["name"] for p in page_list}
+    listed, problems = [], []
+    for n in names:
+        if n in keys:
+            if {"source": n} in first:
+                listed.append({"source": n})
+        elif n in names_of:
+            listed.append({"page": n})
+        else:
+            problems.append(f"{discovery.tilde(paths.hub_config_path())}: tab_order names {n}, which is no source or page")
+    return listed + [t for t in tabs if t not in listed], problems
+
+
 def _now_iso() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -58,6 +83,7 @@ class Registry:
         self._available: list = []
         self._problems: list = []
         self._pages: list = []
+        self._tabs: list = []
         self._claude_dirs: list = []
         self._detected_at = None       # time.monotonic()
         self._cache: dict = {}         # (key, widget id) -> entry
@@ -76,7 +102,10 @@ class Registry:
             self._pages, page_problems = pages.find()
             _, port_problem = discovery.port_setting()
             self._claude_dirs, dir_problems = discovery.claude_dirs()
-            self._problems = problems + page_problems + dir_problems + ([port_problem] if port_problem else [])
+            names, order_problems = discovery.tab_order_setting()
+            self._tabs, more = order_tabs(resolved, self._pages, names)
+            self._problems = problems + page_problems + dir_problems + ([port_problem] if port_problem else []) \
+                + order_problems + more
             self._detected_at = time.monotonic()
 
     def status(self) -> dict:
@@ -88,6 +117,7 @@ class Registry:
                 "sources": [{**s.public(), "view": view_for(s)} for s in loaded],
                 "available": list(self._available),
                 "pages": list(self._pages),
+                "tabs": list(self._tabs),  # {"source": key} or {"page": name}, in the page's order
                 "claude_dirs": list(self._claude_dirs),
                 "problems": list(self._problems),
                 # A reference is drawn as a link only when something can show it.

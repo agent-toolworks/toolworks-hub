@@ -15,6 +15,14 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **`tab_order` in `hub.json` sets the order of the tabs** (#11), sources and
+  link pages alike, and so which tab a new visitor opens:
+  `{"tab_order": ["guide", "tickets"]}`. Tabs it does not name follow in the
+  order they had; a source that is not working stays at the end even when
+  named, and a name that matches nothing is a problem shown on the page.
+  `/api/status` has the order as `tabs`, and `hub status` prints a TABS line
+  and lists sources and pages in that order.
+
 ## 0.11.0 — 2026-10-26
 
 - **The page is as wide as the window.** A tab's header is a bar across the

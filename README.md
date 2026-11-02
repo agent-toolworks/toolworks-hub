@@ -64,6 +64,15 @@ Each source gets a tab, with a dot for its state (the states are in
 last tab lists the agent-toolworks plugins you have not installed, with their
 install commands.
 
+The tabs come in the order the hub finds them, working sources first, then
+link pages. `tab_order` in `hub.json` puts the tabs it names first, in its
+order, sources and link pages alike; the first one is the tab a new visitor
+opens. `hub status` lists the tabs in the order the page shows them.
+
+```json
+{"tab_order": ["guide", "tickets", "reviews"]}
+```
+
 code-search's tab is a full page of its own: Search, Fleet and Questions over
 the fleet or any ticket workspace, with hits that open in your editor. It
 lives here, in [`web/views/code-search`](web/views/code-search), and asks

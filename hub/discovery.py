@@ -84,7 +84,7 @@ def _subdirs(root: str) -> list:
             if not n.startswith(".") and os.path.isdir(os.path.join(root, n))]
 
 
-SETTINGS = ("source_dirs", "page_dirs", "port", "claude_dirs", "terminal")
+SETTINGS = ("source_dirs", "page_dirs", "port", "claude_dirs", "terminal", "tab_order")
 DEFAULT_PORT = 7437
 
 
@@ -141,6 +141,17 @@ def port_setting():
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 65535:
         return DEFAULT_PORT, f"{tilde(path)}: port must be a number from 0 to 65535; using {DEFAULT_PORT}"
     return value, None
+
+
+def tab_order_setting():
+    """(the source and page names hub.json's tab_order lists, problems). A
+    name listed twice keeps its first place."""
+    path = paths.hub_config_path()
+    doc, _ = _read_json(path)
+    value = doc.get("tab_order", []) if isinstance(doc, dict) else []
+    if not isinstance(value, list) or not all(isinstance(n, str) and n for n in value):
+        return [], [f"{tilde(path)}: tab_order must be a list of source and page names"]
+    return list(dict.fromkeys(value)), []
 
 
 def folder_setting(key: str, whole_file: bool = False):

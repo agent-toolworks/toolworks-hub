@@ -33,9 +33,13 @@ def main(argv=None) -> int:
     for d in st["claude_dirs"]:
         print(f"  {discovery.tilde(d)}")
     print()
+    # Sources and pages in the order the page's tabs show them.
+    place = {next(iter(t.items())): i for i, t in enumerate(st["tabs"])}
+    print("TABS")
+    print(f"  {', '.join(t.get('source') or t.get('page') for t in st['tabs']) or '(none)'}\n")
     width = max([len(s["key"]) for s in st["sources"]] + [8])
     print("SOURCES")
-    for s in st["sources"]:
+    for s in sorted(st["sources"], key=lambda s: place[("source", s["key"])]):
         line = f"  {s['key']:<{width}}  {s['origin']:<8}  {LABELS.get(s['state'], s['state'])}"
         print(f"{line}  ({s['reason']})" if s["reason"] else line)
         if s["fix"]:
@@ -45,7 +49,7 @@ def main(argv=None) -> int:
     if st["pages"]:
         print("\nPAGES")
         w = max(len(x["name"]) for x in st["pages"])
-        for x in st["pages"]:
+        for x in sorted(st["pages"], key=lambda x: place[("page", x["name"])]):
             print(f"  {x['name']:<{w}}  {x['title']}  ({sum(len(s['links']) for s in x['sections'])} links)")
     if st["available"]:
         print("\nNOT INSTALLED")
