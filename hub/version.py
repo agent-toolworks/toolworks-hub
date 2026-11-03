@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
 """The hub's version. sources/claude/source.json carries the same one, and
 scripts/verify checks that they agree."""
-VERSION = "0.12.0"
+VERSION = "0.13.0"
 RELEASES = "https://github.com/agent-toolworks/toolworks-hub/releases"

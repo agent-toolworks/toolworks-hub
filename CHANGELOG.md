@@ -15,6 +15,8 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.13.0 — 2026-11-03
+
 - **Alerts when a session needs you.** The Claude Code tab has a Settings tab
   beside its Sessions: the hub watches every Claude Code session and plays a
   sound, shows a popup and, if asked, says it aloud when one needs your input
