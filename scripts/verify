@@ -16,13 +16,15 @@
 #                    fake home's sessions and plugins correctly; hub bg
 #                    starts, lists and finishes background sessions on a
 #                    fake claude, and links only the bridged ones.
-#   6. SERVER        token, Host check, CSP, no CORS, idle exit, and
-#                    hub open / stop.
+#   6. SERVER        token, Host check, CSP, no CORS, idle exit, the alert
+#                    settings and events, and hub open / stop.
 #   7. VIEWS         the code-search view groups hits by repo, and the quota
 #                    bars count down to the reset (needs node).
 #   8. VERSIONS      the hub and its Claude source agree.
 #   9. GRAFANA       the example source, against a fake Grafana.
-#  10. DOCS          the guide's example source passes check-source as written.
+#  10. ALERTS        what each session change alerts on, repeats, escalation,
+#                    mute and quiet hours, against a fake Claude Code folder.
+#  11. DOCS          the guide's example source passes check-source as written.
 #
 # Usage: scripts/verify
 set -uo pipefail
@@ -700,7 +702,11 @@ tally < "$TMP/py5d.out"
 
 head_ "6. SERVER"
 INFO="$HOME_FIX/cache/agent-toolworks/server.json"
-in_home env HUB_IDLE_SECONDS=4 TOOLWORKS_CLAUDE_BIN="$ROOT/fixtures/fake-claude" FAKE_CLAUDE_LOG="$TMP/fake-claude.log" python3 "$ROOT/hub/server.py" serve > "$TMP/serve.log" 2>&1 &
+# The alerts' player, speaker and notifier only log: a verify run is silent.
+printf '#!/bin/sh\necho "$(basename "$0") $*" >> "%s"\n' "$TMP/alert-tools.log" > "$TMP/afplay"
+chmod +x "$TMP/afplay"; ln -sf afplay "$TMP/say"; ln -sf afplay "$TMP/osascript"
+in_home env HUB_ALERTS_PLAYER="$TMP/afplay" HUB_ALERTS_SPEAKER="$TMP/say" HUB_ALERTS_NOTIFIER="$TMP/osascript" \
+  HUB_IDLE_SECONDS=4 TOOLWORKS_CLAUDE_BIN="$ROOT/fixtures/fake-claude" FAKE_CLAUDE_LOG="$TMP/fake-claude.log" python3 "$ROOT/hub/server.py" serve > "$TMP/serve.log" 2>&1 &
 SERVER=$!
 for _ in $(seq 50); do [[ -s $INFO ]] && break; sleep 0.1; done
 if [[ ! -s $INFO ]]; then
@@ -835,6 +841,45 @@ EOF
     && ok "a source that knows nothing about a session leaves its section out" || bad "unknown session" "$(head -c 400 "$TMP/body")"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/session/not-an-id") == 400 ]] && ok "an ID that breaks its type's rule is a 400" || bad "bad entity id"
   [[ $(code -H "Cookie: $JAR" "$BASE/api/entities/ticket/PROJ-1") == 404 ]] && ok "an entity type the contract does not define is a 404" || bad "unknown entity type"
+
+  # Alerts: the settings tab reads and writes them; the page asks for events.
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/alerts") == 200 ]] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["settings"]["enabled"] is True and {"id": "tone:chime", "title": "Hub Chime", "group": "Hub"} in d["sounds"], d' "$TMP/body" \
+    && ok "the alert settings are served, with the hub's tones among the sounds" || bad "alerts GET" "$(head -c 400 "$TMP/body")"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" \
+        --data '{"settings":{"volume":0.5,"events":{"finished":{"min_seconds":90,"sound":"system:../../etc"}}}}' "$BASE/api/alerts") == 200 ]] \
+    && python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); f=s["events"]["finished"]; assert s["volume"] == 0.5 and f["min_seconds"] == 90 and f["sound"] == "tone:rise", s' "$HOME_FIX/config/agent-toolworks/alerts.json" \
+    && ok "saved settings are kept in alerts.json, and a sound that names a path is refused" || bad "alerts POST" "$(head -c 400 "$TMP/body")"
+  [[ $(code -X POST -H "Content-Type: application/json" --data '{"settings":{}}' "$BASE/api/alerts") == 403 ]] \
+    && ok "changing the alerts needs the token" || bad "alerts POST without token"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: text/plain" --data '{"settings":{}}' "$BASE/api/alerts") == 415 ]] \
+    && ok "changing the alerts takes JSON only" || bad "alerts POST without JSON"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{}' "$BASE/api/alerts") == 400 ]] \
+    && ok "a body without settings never resets them" || bad "alerts POST without settings"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"minutes":7}' "$BASE/api/alerts/mute") == 400 ]] \
+    && [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"minutes":15}' "$BASE/api/alerts/mute") == 200 ]] \
+    && python3 -c 'import json,sys,time; m=json.load(open(sys.argv[1]))["muted_until"]; assert 14*60 < m - time.time() <= 15*60' "$TMP/body" \
+    && ok "a mute is 15 or 60 minutes" || bad "alerts mute" "$(head -c 400 "$TMP/body")"
+  code -H "Cookie: $JAR" "$BASE/api/alerts/events?after=-1" > /dev/null
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{}' "$BASE/api/alerts/test") == 200 ]] \
+    && [[ $(code -H "Cookie: $JAR" "$BASE/api/alerts/events?after=0") == 200 ]] \
+    && python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert [e["event"] for e in d["events"]] == ["test"] and d["events"][0]["popup"], d' "$TMP/body" \
+    && ok "a test alert reaches the page as an event, muted or not" || bad "alerts test" "$(head -c 400 "$TMP/body")"
+  for _ in $(seq 20); do grep -q 'afplay -v 0.50 .*chime.wav' "$TMP/alert-tools.log" 2>/dev/null && break; sleep 0.1; done
+  grep -q 'afplay -v 0.50 .*chime.wav' "$TMP/alert-tools.log" 2>/dev/null && ok "and the hub plays its sound, at the volume set" \
+    || bad "the test alert played nothing" "$(cat "$TMP/alert-tools.log" 2>/dev/null)"
+  [[ $(code -H "Cookie: $JAR" "$BASE/api/alerts/events?after=x") == 400 ]] && ok "the events' after is a number" || bad "events after=x"
+  python3 -c 'import base64,json,sys; sys.path.insert(0,sys.argv[1]); import alerts; json.dump({"name": "Door bell.wav", "data": base64.b64encode(alerts.tone_wav("knock")).decode()}, open(sys.argv[2], "w"))' "$ROOT/hub" "$TMP/sound.json"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data @"$TMP/sound.json" "$BASE/api/alerts/sounds") == 200 ]] \
+    && grep -q '"added": "custom:Door bell.wav"' "$TMP/body" \
+    && python3 -c 'import base64,json,sys; assert open(sys.argv[2],"rb").read() == base64.b64decode(json.load(open(sys.argv[1]))["data"])' "$TMP/sound.json" "$HOME_FIX/config/agent-toolworks/sounds/Door bell.wav" \
+    && ok "a sound file is added to the person's sounds" || bad "add sound" "$(head -c 400 "$TMP/body")"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"name":"x.wav","data":"aGVsbG8gd29ybGQ="}' "$BASE/api/alerts/sounds") == 400 ]] \
+    && grep -q "not a WAV" "$TMP/body" && ok "a file that is not a sound is refused" || bad "non-sound accepted" "$(head -c 400 "$TMP/body")"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"sound":"custom:Door bell.wav"}' "$BASE/api/alerts/sounds/remove") == 200 ]] \
+    && [[ ! -e "$HOME_FIX/config/agent-toolworks/sounds/Door bell.wav" ]] && ok "and removed" || bad "remove sound"
+  [[ $(code -X POST -H "Cookie: $JAR" -H "Content-Type: application/json" --data '{"sound":"system:Glass"}' "$BASE/api/alerts/sounds/remove") == 400 ]] \
+    && ok "only the person's own sounds can be removed" || bad "removed a system sound"
 
   start=$SECONDS
   while kill -0 $SERVER 2>/dev/null && (( SECONDS - start < 15 )); do sleep 0.2; done
@@ -990,7 +1035,144 @@ head_ "9. GRAFANA EXAMPLE"
 python3 "$ROOT/fixtures/grafana_cases.py" "$ROOT" "$TMP" > "$TMP/py8.out" 2>&1
 tally < "$TMP/py8.out"
 
-head_ "10. DOCS"
+head_ "10. ALERTS"
+# The watcher against a fake Claude Code folder: what each change alerts on,
+# repeats and escalation, the turn length, mute and quiet hours.
+python3 - "$ROOT/hub" "$TMP/alerts-home" > "$TMP/py10.out" 2>&1 <<'EOF'
+import json, os, sys, time
+from datetime import datetime
+sys.path.insert(0, sys.argv[1])
+os.environ["XDG_CONFIG_HOME"] = os.path.join(sys.argv[2], "config")
+os.environ["XDG_CACHE_HOME"] = os.path.join(sys.argv[2], "cache")
+import alerts
+
+def say(ok, what, got=None):
+    print(f"ok {what}" if ok else f"bad {what}: {got}")
+
+d = alerts.normalise({"volume": 3, "events": {"needs_input": {"plays": 9, "interval": 30, "sound": "custom:.hidden"}},
+                      "quiet_hours": {"on": True, "start": "25:00"}, "keep_running": "yes"})
+ni = d["events"]["needs_input"]
+say(d["volume"] == 1 and ni["plays"] == 1 and ni["interval"] == 30 and ni["sound"] == "tone:chime"
+    and d["quiet_hours"]["start"] == "22:00" and d["keep_running"] is False and d["events"]["exited"]["on"] is False,
+    "settings out of range or of the wrong kind take their defaults; the rest are kept", d)
+say(alerts.normalise(None) == alerts.normalise(alerts.DEFAULTS), "no settings file is the defaults")
+say([alerts.sound_kind(x) for x in ("none", "tone:alarm", "tone:bell", "system:Glass", "system:../x", "custom:a.wav", "file:/x")]
+    == ["none", "tone", None, "system", None, "custom", None], "a sound id is none, a tone, macOS's or the person's, never a path")
+q = {"on": True, "start": "22:00", "end": "08:00"}
+say(alerts.in_quiet_hours(q, datetime(2026, 1, 1, 23, 0)) and alerts.in_quiet_hours(q, datetime(2026, 1, 1, 7, 59))
+    and not alerts.in_quiet_hours(q, datetime(2026, 1, 1, 8, 0)) and not alerts.in_quiet_hours(dict(q, on=False), datetime(2026, 1, 1, 23, 0)),
+    "quiet hours may span midnight")
+w = alerts.tone_wav("chime")
+say(w[:4] == b"RIFF" and w[8:16] == b"WAVEfmt " and alerts.is_audio(w) and not alerts.is_audio(b"hello world!"),
+    "the hub's tones are WAV files; text is not a sound")
+
+claude = os.path.join(sys.argv[2], "claude")
+os.makedirs(os.path.join(claude, "sessions"))
+os.makedirs(os.path.join(claude, "jobs", "bg1"))
+REC = os.path.join(claude, "sessions", f"{os.getpid()}.json")
+SID = "11111111-2222-4333-8444-555555555555"
+
+def write(status, since, waiting=None):
+    rec = {"pid": os.getpid(), "sessionId": SID, "cwd": "/work/app", "name": "app-1", "kind": "interactive",
+           "status": status, "statusUpdatedAt": since * 1000}
+    if waiting:
+        rec["waitingFor"] = waiting
+    json.dump(rec, open(REC, "w"))
+
+def job(state):
+    json.dump({"state": state, "sessionId": "22222222-2222-4333-8444-555555555555", "name": "nightly", "detail": "tests failed"},
+              open(os.path.join(claude, "jobs", "bg1", "state.json"), "w"))
+
+played, popups = [], []
+class Rec:
+    def play(self, sound, volume, say=None):
+        played.append((sound, round(volume, 2), say))
+        return True
+alerts.macos_popup = lambda t, b: popups.append(t)
+
+def watcher(**over):
+    os.makedirs(os.path.dirname(alerts.settings_path()), exist_ok=True)
+    s = alerts.normalise(alerts.DEFAULTS)
+    s.update(over)
+    alerts.save_settings(s)
+    w = alerts.Watcher(folders=[claude])
+    w.player = Rec()
+    w.sessions, w.jobs = alerts.snapshot([claude])
+    played.clear(); popups.clear()
+    return w
+
+t = 1000.0
+write("idle", t); job("running")
+w = watcher()
+say(not w.events and len(w.sessions) == 1, "what is there at the start is not alerted on", w.events)
+write("busy", t + 1); w.tick([claude], t + 2)
+write("waiting", t + 5, "permission prompt"); w.tick([claude], t + 6)
+e = w.events[-1] if w.events else {}
+say(e.get("event") == "needs_input" and e.get("title") == "app-1 needs you" and "permission prompt" in e.get("body", "")
+    and e.get("session") == SID and played[-1:] == [("tone:chime", 0.8, None)],
+    "a session that starts waiting alerts: its name, why it waits, the sound", (e, played))
+say(popups == ["app-1 needs you"], "with no page asking, macOS shows the popup", popups)
+w.last_listen = time.monotonic()
+write("busy", t + 8); w.tick([claude], t + 9)
+write("idle", t + 20); w.tick([claude], t + 21)
+say(w.events[-1]["event"] == "needs_input", "a turn shorter than the shortest that alerts is not alerted on", w.events[-1])
+write("busy", t + 100); w.tick([claude], t + 101)
+write("idle", t + 200); w.tick([claude], t + 201)
+e = w.events[-1]
+say(e["event"] == "finished" and "after 1 min" in e["body"] and played[-1][0] == "tone:rise" and len(popups) == 1,
+    "a turn that ran long enough alerts when it ends, with how long it took; a page asking shows the popup itself", (e, popups))
+job("failed"); w.tick([claude], t + 202)
+say(w.events[-1]["event"] == "failed" and w.events[-1]["title"] == "nightly failed" and "tests failed" in w.events[-1]["body"],
+    "a background session that fails alerts", w.events[-1])
+os.remove(REC); w.tick([claude], t + 203)
+say(w.events[-1]["event"] != "exited", "a session closing is not alerted on by default", w.events[-1])
+
+ev = alerts.normalise(alerts.DEFAULTS)["events"]
+ev["needs_input"].update(plays=0, interval=10)
+w = watcher(events=ev, escalation=dict(alerts.DEFAULTS["escalation"], on=True, after_minutes=1, interval=10))
+write("waiting", t, "input needed"); w.sessions, w.jobs = alerts.snapshot([claude])
+write("busy", t + 1); w.tick([claude], t + 1)
+write("waiting", t + 2, "input needed"); w.tick([claude], t + 2)
+for i in range(1, 10):
+    w.tick([claude], t + 2 + i * 10)
+sounds = [p[0] for p in played]
+say(sounds[:6] == ["tone:chime"] * 6 and sounds[6:7] == ["tone:alarm"] and played[6][1:] == (1.0, "app-1 is still waiting")
+    and sounds[7:] == ["tone:alarm"] * 3 and w.events[-1]["event"] == "escalated",
+    "until answered: it plays every interval, then after a while escalates to the alarm, at full volume, said aloud, and repeats it", played)
+write("busy", t + 200); w.tick([claude], t + 200)
+n = len(played)
+w.tick([claude], t + 300)
+say(len(played) == n and not w.waiting, "an answered session stops alerting", played[n:])
+
+w = watcher()
+w.mute(15)
+write("idle", t); w.sessions, w.jobs = alerts.snapshot([claude])
+write("waiting", t + 1, "permission prompt"); w.tick([claude], t + 1)
+say(not played and w.events and w.events[-1]["popup"] is False, "muted: listed, but no sound and no popup", (played, w.events[-1:]))
+w = watcher(quiet_hours={"on": True, "start": "00:00", "end": "00:01"})
+alerts.in_quiet_hours = lambda q, now=None: q["on"]
+write("idle", t + 2); w.sessions, w.jobs = alerts.snapshot([claude])
+write("waiting", t + 3, "permission prompt"); w.tick([claude], t + 3)
+say(not played and w.events[-1:] and w.events[-1]["popup"] is True, "quiet hours: no sound, the popup still shows", (played, w.events[-1:]))
+w = watcher(enabled=False)
+write("idle", t + 4); w.sessions, w.jobs = alerts.snapshot([claude])
+write("waiting", t + 5, "permission prompt"); w.tick([claude], t + 5)
+say(not played and not w.events, "alerts off: nothing at all", w.events)
+
+w = watcher()
+w._post({"event": "x"}); w._post({"event": "y"})
+got = w.wait_events(1, timeout=0.1)
+say([e["event"] for e in got["events"]] == ["y"] and got["last"] == 2, "the page gets the events after the last it saw", got)
+say(w.wait_events(99, timeout=5)["events"] == [], "a page that counted past the end (a restarted hub) starts again at once")
+try:
+    alerts.add_sound("../evil.wav", "UklGRg==")
+    say(False, "a sound name with a path is refused")
+except alerts.Refused:
+    say(True, "a sound name with a path is refused")
+EOF
+tally < "$TMP/py10.out"
+
+head_ "11. DOCS"
 # The guide's first source, copied out of docs/writing-a-source.md exactly as a
 # reader would, must pass check-source: a guide that drifts from the contract
 # teaches the wrong thing to everyone who follows it.

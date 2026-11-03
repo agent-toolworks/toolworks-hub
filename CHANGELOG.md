@@ -15,6 +15,19 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- **Alerts when a session needs you.** The Claude Code tab has a Settings tab
+  beside its Sessions: the hub watches every Claude Code session and plays a
+  sound, shows a popup and, if asked, says it aloud when one needs your input
+  (a permission prompt, a question), finishes a turn, or, in the background,
+  fails; a session closing can alert too. Like agent-teller's: a sound per
+  alert (the hub's tones, macOS's, or your own files), volume, repeats until
+  answered, escalation to an alarm after a few minutes, quiet hours, mute for
+  15 minutes or an hour, and a test alert. The hub plays the sounds (`afplay`,
+  `say`); each open hub page shows the popups as browser notifications, and
+  macOS does when none is open. "Keep the hub running while alerts are on"
+  keeps the server up with no page open. Settings are in
+  `~/.config/agent-toolworks/alerts.json`.
+
 ## 0.12.0 — 2026-11-02
 
 - **`tab_order` in `hub.json` sets the order of the tabs** (#11), sources and

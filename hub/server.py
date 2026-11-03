@@ -24,7 +24,8 @@ read both files. The token keeps out web pages, not local processes, which can
 read everything the hub reads anyway.
 
 The server exits after IDLE_SECONDS without a request. An open page sends a
-heartbeat every minute, so the server stays up while someone is looking.
+heartbeat every minute, so the server stays up while someone is looking;
+alerts set to keep it running (hub/alerts.py) keep it up with none.
 """
 from __future__ import annotations
 
@@ -47,6 +48,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import alerts  # noqa: E402
 import discovery  # noqa: E402
 import paths  # noqa: E402
 import sessions  # noqa: E402
@@ -75,6 +77,9 @@ WIDGET = re.compile(r"^/api/sources/([^/]+)/widgets/([^/]+)$")
 CALL = re.compile(r"^/api/sources/([^/]+)/call/([^/]+)$")
 ENTITY = re.compile(r"^/api/entities/([^/]+)/([^/]+)$")
 SESSION = re.compile(r"^/api/sessions/([0-9a-f-]{36})(/transcript|/open)?$")
+ALERTS = re.compile(r"^/api/alerts(?:/(mute|preview|test|sounds|sounds/remove))?$")
+BODY_LIMIT = 4096
+SOUND_BODY_LIMIT = alerts.LARGEST_SOUND * 4 // 3 + 4096  # a sound file, as base64 in JSON
 HEADERS = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
@@ -134,6 +139,7 @@ class Hub(ThreadingHTTPServer):
         self.cookie = f"hub_token_{self.port}"  # cookies ignore ports; keep two hubs apart
         self.hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}"}
         self.last_request = time.monotonic()
+        self.alerts = alerts.Watcher()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -178,6 +184,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._view_file(folder, m.group(2))
         if url.path == "/api/ping":
             return self._json(200, {"ok": True})
+        if url.path == "/api/alerts":
+            return self._json(200, hub.alerts.state())
+        if url.path == "/api/alerts/events":
+            after = (query.get("after") or ["-1"])[0]
+            if not re.fullmatch(r"-1|[0-9]+", after):
+                return self._json(400, {"error": "after is a number"})
+            return self._json(200, hub.alerts.wait_events(int(after)))
         if url.path == "/api/status":
             hub.registry.refresh(force=query.get("refresh") == ["1"])
             return self._json(200, hub.registry.status())
@@ -203,9 +216,9 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(404, {"error": "not found"})
 
     def do_POST(self):
-        """Opening a session, the one thing the page asks the hub to do. It
-        takes JSON only: a page elsewhere cannot send that without the
-        browser asking this hub first, and there are no CORS headers."""
+        """What the page asks the hub to do: open a session, and change the
+        alerts. It takes JSON only: a page elsewhere cannot send that without
+        the browser asking this hub first, and there are no CORS headers."""
         hub = self.server
         hub.last_request = time.monotonic()
         if self.headers.get("Host") not in hub.hosts:
@@ -213,21 +226,47 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorised():
             return self._text(403, "This browser has no token for this hub. Open it with `hub open`.\n")
         url = urllib.parse.urlsplit(self.path)
-        m = SESSION.match(url.path)
-        if not m or m.group(2) != "/open":
+        session, alert = SESSION.match(url.path), ALERTS.match(url.path)
+        if not (session and session.group(2) == "/open") and not alert:
             return self._json(404, {"error": "not found"})
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
             return self._json(415, {"error": "send JSON"})
+        limit = SOUND_BODY_LIMIT if alert and alert.group(1) == "sounds" else BODY_LIMIT
         try:
             length = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(min(length, 4096)) or b"{}")
+            if length > limit:
+                return self._json(413, {"error": "that is more than the hub takes"})
+            body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self._json(400, {"error": "the body is not JSON"})
-        where = body.get("in") if isinstance(body, dict) else None
+        if not isinstance(body, dict):
+            return self._json(400, {"error": "send a JSON object"})
+        if alert:
+            return self._alerts(alert.group(1), body)
         try:
-            return self._json(200, sessions.open_session(m.group(1), where))
+            return self._json(200, sessions.open_session(session.group(1), body.get("in")))
         except sessions.Failed as e:
             return self._json(409, {"error": str(e), "command": e.command})
+
+    def _alerts(self, what, body: dict) -> None:
+        w = self.server.alerts
+        try:
+            if what is None:
+                return self._json(200, w.update(body.get("settings")))
+            if what == "mute":
+                return self._json(200, w.mute(body.get("minutes")))
+            if what == "preview":
+                return self._json(200, {"played": w.preview(body.get("sound"), body.get("volume"))})
+            if what == "test":
+                return self._json(200, {"event": w.test(body.get("sound"))})
+            if what == "sounds":
+                return self._json(200, dict(w.state(), added=alerts.add_sound(body.get("name"), body.get("data"))))
+            alerts.remove_sound(body.get("sound"))
+            return self._json(200, w.state())
+        except alerts.Refused as e:
+            return self._json(400, {"error": str(e)})
+        except OSError as e:
+            return self._json(500, {"error": f"could not save it: {e}"})
 
     def _session(self, sid: str, part, query) -> None:
         try:
@@ -343,6 +382,7 @@ def serve(port=None, idle: bool = True) -> int:
     # Detect in the background so the first request is answered at once; it
     # waits on the registry's lock until detection finishes.
     threading.Thread(target=registry.refresh, kwargs={"force": True}, daemon=True).start()
+    hub.alerts.start()
     _write_info(hub)
 
     def stop(*_):
@@ -353,7 +393,8 @@ def serve(port=None, idle: bool = True) -> int:
         def watch():
             while True:
                 time.sleep(min(5.0, max(0.5, IDLE_SECONDS / 4)))
-                if time.monotonic() - hub.last_request > IDLE_SECONDS:
+                # Alerts set to keep the hub running keep it up with no page open.
+                if time.monotonic() - hub.last_request > IDLE_SECONDS and not hub.alerts.keep_running():
                     hub.shutdown()
                     return
         threading.Thread(target=watch, daemon=True).start()

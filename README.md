@@ -98,6 +98,34 @@ and a Transcript tab with the conversation. See
 source can start, list and finish background sessions of its own through
 `hub bg` ([Background sessions](docs/contract.md#background-sessions)).
 
+### Alerts
+
+The Claude Code tab has two tabs of its own: Sessions, and Settings, which
+sets the alerts. The hub watches every Claude Code session on the machine (the
+records Claude Code keeps in `sessions/` and `jobs/` of each Claude Code
+folder) and alerts when one:
+
+- **needs your input**: a permission prompt, a question or a dialog. It can
+  play again until answered, and escalate to a louder alarm, said aloud, after
+  a few minutes of waiting;
+- **finished a turn** and waits for your reply (only after turns of at least
+  30 seconds, by default), or a background session is done;
+- **failed**: a background session ended in failure;
+- **closed** (off by default).
+
+Each alert has its own sound: none, the hub's four tones (agent-teller's), the
+macOS sounds, or a file of your own (added on the page, kept in
+`~/.config/agent-toolworks/sounds/`), and can be said aloud. The hub plays them
+itself (`afplay`, `say`), so a sound plays whichever tab is in front. The
+popup is a browser notification from each open hub page (allow it on the
+Settings tab); clicking it opens the session's page. There is a volume, a
+mute for 15 minutes or an hour, quiet hours (no sound; popups still show) and
+a test alert. The settings are in `~/.config/agent-toolworks/alerts.json`.
+
+Alerts last as long as the hub runs: 10 minutes after its last page closes,
+unless "Keep the hub running while alerts are on" is set. Kept running, it
+alerts with no page open, and macOS shows the popups; `hub stop` stops it.
+
 ## Adding a page of links
 
 A tab can also be a page of links, in sections, read from a JSON file in

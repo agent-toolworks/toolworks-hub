@@ -347,3 +347,31 @@ table.sessions td { vertical-align: middle; }
 a { color: var(--accent); }
 a.ref { text-decoration: none; }
 a.ref:hover { text-decoration: underline; }
+
+/* A tab's own tabs (the Claude Code tab: Sessions, Settings). */
+.sub-tabs { padding: 0 24px; }
+.source > nav.sub-tabs { margin: 0; }
+
+/* The Settings tab: the alerts. */
+.settings { display: grid; gap: 16px; margin-top: 16px; }
+.settings p { margin: 0 0 8px; }
+.settings-head { display: flex; align-items: center; gap: 10px 20px; flex-wrap: wrap; }
+.settings-head input[type="range"] { flex: none; width: 140px; }
+.settings-head .vol { min-width: 4ch; font-variant-numeric: tabular-nums; }
+.settings-status { margin: 10px 0 0 !important; font-size: 13px; }
+.mute, .notify { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.settings-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+.settings .row { display: flex; align-items: center; gap: 6px 8px; flex-wrap: wrap; }
+.settings input[type="time"], .settings .num-input { flex: none; width: auto; }
+.settings .num-input { width: 6em; }
+.sound-pick { display: inline-flex; align-items: center; gap: 4px; }
+.alert-table td { vertical-align: top; }
+.alert-table .about { font-size: 12px; white-space: normal; margin-left: 20px; max-width: 360px; }
+.extra { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.alert-log { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.alert-log li { display: flex; gap: 10px; padding: 4px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.alert-log li > :first-child { flex: 0 0 70px; }
+@media (max-width: 600px) {
+  .sub-tabs { padding-left: 16px; padding-right: 16px; }
+  .settings-grid { grid-template-columns: 1fr; }
+}

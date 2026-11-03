@@ -665,8 +665,18 @@ function sourceHead(s) {
 const working = s => s.state === 'working' || s.state === 'stale';
 const viewSrc = s => (working(s) && s.view ? `${s.view}?source=${encodeURIComponent(s.key)}` : null);
 
-function sourceCard(s) {
+function sourceCard(s, sub) {
   const card = el('section', { cls: 'source' }, ...sourceHead(s));
+  const subs = subTabs(s);
+  if (subs) {
+    card.append(el('nav', { cls: 'tabs sub-tabs', 'aria-label': s.title }, subs.map(([name, label]) => el('a', {
+      cls: 'tab', href: sourceHref(s.key) + (name ? `/${name}` : ''), 'aria-current': name === sub ? 'page' : null,
+    }, label))));
+    if (sub === 'settings') {
+      card.append(alertsPane());
+      return card;
+    }
+  }
   if (working(s) && s.widgets.length) {
     // The stats, in one strip where the first of them was.
     const stats = s.widgets.filter(w => w.kind === 'stat');
@@ -674,6 +684,18 @@ function sourceCard(s) {
       w.kind !== 'stat' ? widgetCard(s, w) : w === stats[0] ? statStrip(s, stats) : null)));
   }
   return card;
+}
+
+// A tab's own tabs, as [name in the address, label]: the hub's Claude source
+// has its sessions and the hub's settings (the alerts).
+function subTabs(s) {
+  return s.key === BUILTIN ? [['', 'Sessions'], ['settings', 'Settings']] : null;
+}
+
+// "#/source/claude/settings" -> the tab "#/source/claude" and its "settings".
+function splitSub(hash) {
+  const m = /^(#\/source\/[^/]+)\/([a-z-]+)$/.exec(hash || '');
+  return m ? { tab: m[1], sub: m[2] } : { tab: hash, sub: '' };
 }
 
 // --- views, kept while another tab is shown ----------------------------------
@@ -1117,13 +1139,17 @@ async function loadTab(wanted, refresh) {
   const ordered = orderedTabs(st);
   const valid = h => h && (h === NOT_INSTALLED ? st.available.length > 0 : ordered.some(t => t.href === h));
   // A tab on its own page is not remembered: the hub's own page keeps its tab.
-  const { tab, full } = splitFull(wanted);
+  const { tab: wantedTab, full } = splitFull(wanted);
   // An unknown or stale tab (a source that went away) falls back to the first.
-  const hash = [tab, remembered()].find(valid)
-    || (ordered.length ? ordered[0].href : NOT_INSTALLED);
-  const shown = full ? hash + FULL : hash;
+  const picked = [wantedTab, remembered()].map(splitSub).find(t => valid(t.tab))
+    || { tab: ordered.length ? ordered[0].href : NOT_INSTALLED, sub: '' };
+  const hash = picked.tab;
+  const s = sources.find(x => sourceHref(x.key) === hash);
+  const sub = s && subTabs(s) && subTabs(s).some(([name]) => name === picked.sub) ? picked.sub : '';
+  const whole = sub ? `${hash}/${sub}` : hash;
+  const shown = full ? whole + FULL : whole;
   if (shown !== location.hash) history.replaceState(null, '', shown);
-  if (!full) remember(hash);
+  if (!full) remember(whole);
   document.body.classList.toggle('full', full);
   document.body.classList.remove('with-view');
   renderTabs(st, hash);
@@ -1152,7 +1178,6 @@ async function loadTab(wanted, refresh) {
     show(null, linkPage(page));
     return;
   }
-  const s = sources.find(x => sourceHref(x.key) === hash);
   if (s && viewSrc(s)) {
     let v = views.get(s.key);
     if (v) {
@@ -1172,7 +1197,7 @@ async function loadTab(wanted, refresh) {
     document.body.classList.add('with-view');
     return;
   }
-  show(null, s ? sourceCard(s) : el('p', { cls: 'muted' }, 'No sources found.'));
+  show(null, s ? sourceCard(s, sub) : el('p', { cls: 'muted' }, 'No sources found.'));
 }
 
 // A link page: sections of links from a JSON file (hub/pages.py). An http(s)
@@ -1193,6 +1218,247 @@ function linkPage(p) {
       el('article', { cls: 'widget' }, el('h3', {}, sec.title), el('ul', { cls: 'links' }, sec.links.map(link))))));
 }
 
+// --- alerts ------------------------------------------------------------------
+// The hub watches Claude Code's sessions and plays each alert itself
+// (hub/alerts.py); the page shows its popups. Every open hub page asks for
+// alerts as they happen and shows each as a browser notification -- one per
+// alert however many pages are open, as they share its tag -- or, when this
+// browser does not allow them, as a note at the bottom of the window.
+
+const ALERT_EVENTS = [
+  ['needs_input', 'Needs your input', 'A permission prompt, a question or a dialog is waiting.'],
+  ['finished', 'Finished a turn', 'It stopped working and waits for your reply; a background session is done.'],
+  ['failed', 'Background session failed', 'A background session ended in failure.'],
+  ['exited', 'Session closed', 'A session\'s process ended, whoever closed it.'],
+];
+
+function canNotify() { return 'Notification' in window; }
+
+function showAlert(e) {
+  window.dispatchEvent(new CustomEvent('hub:alert', { detail: e }));
+  if (!e.popup) return;
+  const open = () => { if (e.session) location.hash = entityHref({ ref: 'session', id: e.session }); };
+  if (canNotify() && Notification.permission === 'granted') {
+    // silent: the hub has played the alert's own sound.
+    const n = new Notification(e.title, { body: e.body, tag: `hub-alert-${e.id}`, silent: true });
+    n.onclick = () => { window.focus(); open(); n.close(); };
+    return;
+  }
+  toast(`${e.title} · ${e.body}`);
+}
+
+async function listenAlerts() {
+  let after = -1;
+  for (;;) {
+    try {
+      const r = await api(`/api/alerts/events?after=${after}`);
+      if (after >= 0) r.events.forEach(showAlert);
+      after = r.last;
+    } catch {
+      await new Promise(done => setTimeout(done, 5000));  // the hub is down or restarting
+    }
+  }
+}
+
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+const secondsLabel = s => s < 60 ? `${s} s` : `${s / 60} min`;
+
+function alertsPane() {
+  const pane = el('div', { cls: 'settings' }, el('p', { cls: 'muted' }, 'Loading…'));
+  let st = null;
+  let saving = Promise.resolve();
+
+  const save = () => {
+    saving = saving.then(() => post('/api/alerts', { settings: st.settings }))
+      .then(r => { st = r; drawStatus(); }, err => toast(`Could not save the alerts: ${err.message}`));
+    return saving;
+  };
+  const act = (path, body, after) => post(path, body).then(r => { if (after) after(r); return r; },
+    err => { toast(err.message); return null; });
+
+  // Inputs bound to one field of the settings: a change saves at once.
+  const check = (obj, key, label, title) => {
+    const box = el('input', { type: 'checkbox', checked: !!obj[key] });
+    box.addEventListener('change', () => { obj[key] = box.checked; save(); });
+    return el('label', { cls: 'check', title }, box, label);
+  };
+  const pick = (obj, key, options, label) => {
+    const sel = el('select', { 'aria-label': label },
+      options.map(([v, text]) => el('option', { value: v, selected: v === obj[key] }, text)));
+    sel.addEventListener('change', () => {
+      const o = options.find(([v]) => String(v) === sel.value);
+      obj[key] = o ? o[0] : sel.value;
+      save();
+    });
+    return sel;
+  };
+  const soundPick = (obj, key, label) => {
+    const groups = new Map();
+    for (const s of st.sounds) {
+      if (!groups.has(s.group)) groups.set(s.group, []);
+      groups.get(s.group).push(s);
+    }
+    const sel = el('select', { 'aria-label': label }, [...groups].map(([g, list]) => {
+      const opts = list.map(s => el('option', { value: s.id, selected: s.id === obj[key] }, s.title));
+      return g ? el('optgroup', { label: g }, opts) : opts;
+    }).flat());
+    if (!st.sounds.some(s => s.id === obj[key])) sel.prepend(el('option', { value: obj[key], selected: true }, `${obj[key]} (missing)`));
+    sel.addEventListener('change', () => { obj[key] = sel.value; save(); });
+    const play = el('button', { type: 'button', cls: 'btn btn-small', title: 'Play this sound', 'aria-label': `Play ${label}` }, '▶');
+    play.addEventListener('click', () => act('/api/alerts/preview', { sound: sel.value }, r => {
+      if (!r.played && sel.value !== 'none') toast('This machine has nothing to play sounds with (afplay).');
+    }));
+    return el('span', { cls: 'sound-pick' }, sel, play);
+  };
+
+  const status = el('p', { cls: 'muted settings-status' });
+  const muteBox = el('span', { cls: 'mute' });
+  const notifyBox = el('span', { cls: 'notify' });
+  const recent = el('ul', { cls: 'alert-log' });
+
+  function drawStatus() {
+    const muted = st.muted_until ? new Date(st.muted_until * 1000) : null;
+    muteBox.replaceChildren(...(muted
+      ? [el('span', { cls: 'status status-warn' }, `muted until ${fmtClock(muted.toISOString())}`),
+        button('Unmute', () => act('/api/alerts/mute', { minutes: 0 }, r => { st = r; drawStatus(); }))]
+      : [el('span', { cls: 'muted' }, 'Mute for'), ...st.mute_choices.map(m =>
+        button(m < 60 ? `${m} min` : plural(m / 60, 'hour', 'hours'),
+          () => act('/api/alerts/mute', { minutes: m }, r => { st = r; drawStatus(); })))]));
+    status.textContent = [
+      `Watching ${plural(st.watching, 'running session', 'running sessions')}`,
+      st.waiting ? `${st.waiting} waiting for you` : null,
+      st.quiet_now ? 'quiet hours now: no sound' : null,
+      st.can_play ? null : 'no sound player on this machine (afplay): popups only',
+    ].filter(Boolean).join(' · ');
+    drawNotify();
+    recent.replaceChildren(...(st.recent.length ? st.recent.map(alertItem)
+      : [el('li', { cls: 'muted' }, 'No alerts since the hub started.')]));
+  }
+
+  function drawNotify() {
+    if (!canNotify()) {
+      notifyBox.replaceChildren(el('span', { cls: 'muted' }, 'This browser cannot show popups; they show at the bottom of the hub page.'));
+      return;
+    }
+    const p = Notification.permission;
+    notifyBox.replaceChildren(p === 'granted' ? el('span', { cls: 'status status-good' }, 'popups allowed in this browser')
+      : p === 'denied' ? el('span', { cls: 'status status-warn', title: 'Allow notifications for this page in the browser\'s site settings' },
+        'popups blocked in this browser')
+        : button('Allow popups in this browser', () => Notification.requestPermission().then(drawNotify)));
+  }
+
+  function button(label, onClick, title) {
+    const b = el('button', { type: 'button', cls: 'btn btn-small', title }, label);
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function alertItem(e) {
+    const when = new Date(e.at * 1000).toISOString();
+    return el('li', {}, el('span', { cls: 'muted', title: fmtTime(when) }, fmtClock(when)),
+      e.session ? el('a', { href: entityHref({ ref: 'session', id: e.session }) }, e.title) : el('strong', {}, e.title),
+      el('span', { cls: 'muted' }, e.body));
+  }
+
+  function draw() {
+    const s = st.settings;
+    const volume = el('input', { type: 'range', min: 0, max: 100, step: 5, value: Math.round(s.volume * 100), 'aria-label': 'Volume' });
+    const volumeText = el('span', { cls: 'muted vol' }, `${Math.round(s.volume * 100)}%`);
+    volume.addEventListener('input', () => { volumeText.textContent = `${volume.value}%`; });
+    volume.addEventListener('change', () => { s.volume = Number(volume.value) / 100; save(); });
+    const test = button('Send a test alert', () => act('/api/alerts/test', {}), 'Plays the Needs your input sound and shows a popup');
+
+    const ev = s.events;
+    const ni = ev.needs_input;
+    const extra = {
+      needs_input: el('span', { cls: 'extra' }, 'play', pick(ni, 'plays', st.choices.plays.map(n => [n, n ? plural(n, 'time', 'times') : 'until answered']), 'Plays'),
+        'every', pick(ni, 'interval', st.choices.interval.map(n => [n, secondsLabel(n)]), 'Interval')),
+      finished: el('span', { cls: 'extra' }, 'after turns of at least', minSeconds(ev.finished)),
+    };
+    const rows = ALERT_EVENTS.map(([key, title, about]) => el('tr', {},
+      el('td', {}, check(ev[key], 'on', el('strong', {}, title)), el('div', { cls: 'muted about' }, about)),
+      el('td', {}, soundPick(ev[key], 'sound', `${title} sound`)),
+      el('td', {}, check(ev[key], 'popup', 'popup')),
+      el('td', {}, check(ev[key], 'speak', 'speak', 'Say the alert aloud (macOS say)')),
+      el('td', { cls: 'extra-cell' }, extra[key] || null)));
+
+    const esc = s.escalation;
+    const q = s.quiet_hours;
+    const clock = key => {
+      const input = el('input', { type: 'time', value: q[key], 'aria-label': key === 'start' ? 'Quiet from' : 'Quiet until' });
+      input.addEventListener('change', () => { if (input.value) { q[key] = input.value; save(); } });
+      return input;
+    };
+
+    const fileInput = el('input', { type: 'file', accept: 'audio/*,.wav,.aif,.aiff,.caf,.mp3,.m4a', hidden: true });
+    fileInput.addEventListener('change', () => {
+      const f = fileInput.files[0];
+      fileInput.value = '';
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => act('/api/alerts/sounds', { name: f.name, data: String(reader.result).split(',')[1] || '' },
+        r => { st = r; draw(); toast(`Added ${f.name}`); });
+      reader.readAsDataURL(f);
+    });
+    const yours = st.sounds.filter(x => x.id.startsWith('custom:'));
+
+    pane.replaceChildren(
+      el('article', { cls: 'widget' },
+        el('div', { cls: 'settings-head' },
+          check(s, 'enabled', el('strong', {}, 'Alerts on'), 'Off: no sound, popup or speech for any session'),
+          el('label', { cls: 'check' }, 'Volume', volume, volumeText), muteBox, notifyBox, test),
+        status),
+      el('article', { cls: 'widget' }, el('h3', {}, 'When a session…'),
+        el('div', { cls: 'table-wrap' }, el('table', { cls: 'alert-table' },
+          el('thead', {}, el('tr', {}, el('th', {}, 'Alert'), el('th', {}, 'Sound'), el('th', {}, 'Popup'), el('th', {}, 'Speak'), el('th', {}, ''))),
+          el('tbody', {}, rows)))),
+      el('div', { cls: 'settings-grid' },
+        el('article', { cls: 'widget' }, el('h3', {}, 'Still waiting'),
+          el('p', {}, check(esc, 'on', 'Escalate when a session has waited for your input for'),
+            ' ', pick(esc, 'after_minutes', st.choices.after_minutes.map(n => [n, `${n} min`]), 'Escalate after')),
+          el('p', { cls: 'row' }, 'Then play', soundPick(esc, 'sound', 'Escalation sound'), 'every',
+            pick(esc, 'interval', st.choices.interval.map(n => [n, secondsLabel(n)]), 'Escalation interval'), 'until it is answered'),
+          el('p', { cls: 'row' }, check(esc, 'full_volume', 'at full volume'), check(esc, 'speak', 'and say it aloud'))),
+        el('article', { cls: 'widget' }, el('h3', {}, 'Quiet hours'),
+          el('p', { cls: 'row' }, check(q, 'on', 'From'), clock('start'), 'to', clock('end')),
+          el('p', { cls: 'muted' }, 'No sound or speech then; popups still show.')),
+        el('article', { cls: 'widget' }, el('h3', {}, 'With no hub page open'),
+          el('p', {}, check(s, 'keep_running', 'Keep the hub running while alerts are on')),
+          el('p', { cls: 'muted' }, 'The hub stops 10 minutes after its last page closes, and its alerts with it. ' +
+            'Kept running, it alerts with no page open, and macOS shows the popups. `hub stop` stops it.')),
+        el('article', { cls: 'widget' }, el('h3', {}, 'Your sounds'),
+          yours.length ? el('ul', { cls: 'links' }, yours.map(x => el('li', { cls: 'row' }, x.title,
+            button('Remove', () => act('/api/alerts/sounds/remove', { sound: x.id }, r => { st = r; draw(); }))))) : null,
+          el('p', { cls: 'row' }, fileInput, button('Add a sound file…', () => fileInput.click()),
+            el('span', { cls: 'muted' }, 'WAV, AIFF, CAF, MP3 or M4A, 10 MB at most')),
+          el('p', { cls: 'muted' }, 'Kept in ', el('code', {}, st.sounds_dir), '.'))),
+      el('article', { cls: 'widget' }, el('h3', {}, 'Recent alerts'), recent,
+        el('p', { cls: 'widget-meta muted' }, 'Settings are kept in ', el('code', {}, st.settings_file), '.')));
+    drawStatus();
+  }
+
+  function minSeconds(obj) {
+    const input = el('input', { type: 'number', min: 0, max: 3600, step: 5, value: obj.min_seconds, cls: 'num-input', 'aria-label': 'Shortest turn, in seconds' });
+    input.addEventListener('change', () => {
+      const n = Math.round(Number(input.value));
+      if (Number.isFinite(n) && n >= 0 && n <= 3600) { obj.min_seconds = n; save(); }
+      else input.value = obj.min_seconds;
+    });
+    return el('span', { cls: 'extra' }, input, 's');
+  }
+
+  const refresh = () => api('/api/alerts').then(r => { st = r; return r; });
+  refresh().then(draw, err => pane.replaceChildren(el('p', { cls: 'error' }, `Could not read the alerts: ${err.message}`)));
+  // A new alert updates the counts and the list; so does a minute passing (a mute ending).
+  const onAlert = () => {
+    if (!pane.isConnected) window.removeEventListener('hub:alert', onAlert);
+    else if (st) refresh().then(drawStatus, () => {});
+  };
+  window.addEventListener('hub:alert', onAlert);
+  timers.push(setInterval(() => { if (!document.hidden) onAlert(); }, 60000));
+  return pane;
+}
+
 function route(refresh) {
   const m = location.hash.match(/^#\/entity\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
   if (m) return loadEntity(decodeURIComponent(m[1]), decodeURIComponent(m[2]), m[3] ? decodeURIComponent(m[3]) : null, refresh);
@@ -1210,6 +1476,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('refresh').addEventListener('click', () => route(true));
   window.addEventListener('hashchange', () => route(false));
   route(false);
+  listenAlerts();
   // The heartbeat keeps the server from exiting while this page is open.
   setInterval(async () => {
     try { await api('/api/ping'); }
