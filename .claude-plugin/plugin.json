@@ -1,0 +1,10 @@
+{
+  "name": "toolworks-hub",
+  "description": "A local web page for Claude Code and the agent-toolworks tools: sessions, token-save usage, code-search, note-search and repo-fleet tabs, each from whichever tools are installed. Runs on 127.0.0.1 only, needs nothing but python3. Open it with /hub.",
+  "version": "0.14.0",
+  "author": {
+    "name": "Zvi Rahamim"
+  },
+  "homepage": "https://github.com/agent-toolworks/toolworks-hub",
+  "keywords": ["dashboard", "sessions", "usage", "local", "web"]
+}

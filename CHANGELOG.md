@@ -15,6 +15,15 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+## 0.14.0 — 2026-11-03
+
+- **A Claude Code plugin.** `.claude-plugin/plugin.json` and a `/hub` command,
+  which runs the plugin's own `scripts/hub open`. Install it from the
+  agent-toolworks catalogue (`claude plugin install toolworks-hub@agent-toolworks`);
+  a clone keeps working, with the same port, token and settings.
+  `scripts/set-version` sets the plugin's version too, and `scripts/verify`
+  checks that it agrees.
+
 - README: lists the sources that ship in plugins, now including note-search
   0.2.0 and fleet-workspace 1.2.0 (repo-fleet ticket workspaces).
 

@@ -20,7 +20,7 @@
 #                    settings and events, and hub open / stop.
 #   7. VIEWS         the code-search view groups hits by repo, and the quota
 #                    bars count down to the reset (needs node).
-#   8. VERSIONS      the hub and its Claude source agree.
+#   8. VERSIONS      the hub, its Claude source and its plugin agree.
 #   9. GRAFANA       the example source, against a fake Grafana.
 #  10. ALERTS        what each session change alerts on, repeats, escalation,
 #                    mute and quiet hours, against a fake Claude Code folder.
@@ -1016,6 +1016,10 @@ head_ "8. VERSIONS"
 HUBV=$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from version import VERSION; print(VERSION)' "$ROOT/hub")
 SRCV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/sources/claude/source.json")
 [[ $HUBV == "$SRCV" ]] && ok "the hub and its Claude source are both $HUBV" || bad "hub $HUBV, Claude source $SRCV"
+PLUGV=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' "$ROOT/.claude-plugin/plugin.json")
+[[ $HUBV == "$PLUGV" ]] && ok "the Claude Code plugin is $HUBV too" || bad "hub $HUBV, .claude-plugin/plugin.json $PLUGV"
+grep -q 'scripts/hub" open' "$ROOT/commands/hub.md" && ok "/hub runs the plugin's own scripts/hub open" \
+  || bad "commands/hub.md does not run scripts/hub open"
 OUT=$("$ROOT/scripts/release-notes" 2>&1); RC=$?
 [[ $RC == 0 ]] && grep -q "## What changed in $HUBV" <<< "$OUT" && ok "CHANGELOG.md has a section for $HUBV, and release-notes prints it" \
   || bad "release notes for $HUBV" "$OUT"

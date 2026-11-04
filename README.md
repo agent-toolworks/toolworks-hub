@@ -29,6 +29,19 @@ component states, discovery, linking between pages, configuration, security
 and the first release:
 [Agent Toolworks Hub — Design](https://claude.ai/code/artifact/cf0466e0-af0d-466c-a082-376bc591deb0).
 
+## Install
+
+The hub is a Claude Code plugin in the agent-toolworks catalogue, with every
+other tool it shows:
+
+```sh
+claude plugin marketplace add agent-toolworks/plugins
+claude plugin install toolworks-hub@agent-toolworks
+```
+
+Then type `/hub` in Claude Code to open it. Or run it from a clone, as below;
+both use the same port, token and settings.
+
 ## Running it
 
 ```sh
