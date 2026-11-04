@@ -2,8 +2,8 @@
 
 A local web app that shows Claude Code data alongside whichever
 agent-toolworks components are installed: token-save usage, code-search fleet
-search, and repo-fleet workspaces. You can also add your own sources, such as a
-page fed by Grafana.
+search, note-search searches, and repo-fleet ticket workspaces. You can also
+add your own sources, such as a page fed by Grafana.
 
 It runs as you, with no admin rights, and listens on localhost only. It
 changes nothing; the one thing it does on request is open a Claude Code
@@ -15,10 +15,16 @@ published contract rather than re-implementing the tool.
 4, which also reads 1 to 3) and its checker, the hub server with the built-in Claude Code source,
 session pages, and an example Grafana source. The page has a tab per source,
 and sources can be loaded from folders you name, such as a git repo of your
-team's sources. The token-save and code-search
-sources ship inside those plugins, from token-save 0.26.0 and code-search
-1.29.0 ([token-save#43](https://github.com/agent-toolworks/token-save/pull/43),
-[code-search-fleet#114](https://github.com/agent-toolworks/code-search-fleet/pull/114)). The design covers the contract,
+team's sources. The other sources ship inside their plugins:
+
+| Source | From | Shows |
+| --- | --- | --- |
+| token-save | token-save 0.26.0 ([token-save#43](https://github.com/agent-toolworks/token-save/pull/43)) | usage and cost, quota, `ts doctor` |
+| code-search | code-search 1.29.0 ([code-search-fleet#114](https://github.com/agent-toolworks/code-search-fleet/pull/114)) | a search box over the fleet, each answer labelled with its kind of evidence |
+| note-search | note-search 0.2.0 ([note-search#2](https://github.com/agent-toolworks/note-search/pull/2)) | agents' searches and whether they worked; a search box; a section on each session's page |
+| fleet-workspace | fleet-workspace 1.2.0 ([repo-fleet#1](https://github.com/agent-toolworks/repo-fleet/pull/1)) | ticket workspaces and what `close-ticket` would do with each; fleet repos; the ticket a session worked in |
+
+The design covers the contract,
 component states, discovery, linking between pages, configuration, security
 and the first release:
 [Agent Toolworks Hub — Design](https://claude.ai/code/artifact/cf0466e0-af0d-466c-a082-376bc591deb0).
