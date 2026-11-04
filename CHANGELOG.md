@@ -15,6 +15,9 @@ gh release create vX.Y.Z --title vX.Y.Z --notes-file <(scripts/release-notes X.Y
 
 ## Unreleased
 
+- README: lists the sources that ship in plugins, now including note-search
+  0.2.0 and fleet-workspace 1.2.0 (repo-fleet ticket workspaces).
+
 ## 0.13.0 — 2026-11-03
 
 - **Alerts when a session needs you.** The Claude Code tab has a Settings tab
