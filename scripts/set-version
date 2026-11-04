@@ -4,6 +4,7 @@
 #
 #   hub/version.py               VERSION
 #   sources/claude/source.json   "version" (the built-in source ships with the hub)
+#   .claude-plugin/plugin.json   "version" (the Claude Code plugin)
 #   CHANGELOG.md                 "## X.Y.Z — <today>", a fresh empty Unreleased above
 #
 # Then: scripts/verify, commit "Release X.Y.Z", tag vX.Y.Z, push it, and
@@ -22,6 +23,10 @@ if old == new:
     sys.exit(f"set-version: the version is already {new}")
 open(p, "w").write(s.replace(f'VERSION = "{old}"', f'VERSION = "{new}"'))
 p = f"{root}/sources/claude/source.json"
+s = open(p).read()
+assert f'"version": "{old}"' in s, f"{p} does not say version {old}"
+open(p, "w").write(s.replace(f'"version": "{old}"', f'"version": "{new}"', 1))
+p = f"{root}/.claude-plugin/plugin.json"
 s = open(p).read()
 assert f'"version": "{old}"' in s, f"{p} does not say version {old}"
 open(p, "w").write(s.replace(f'"version": "{old}"', f'"version": "{new}"', 1))
